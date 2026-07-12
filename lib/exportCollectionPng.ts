@@ -254,9 +254,31 @@ export async function renderCollectionPoster(params: RenderCollectionParams): Pr
   const contentH = H - m * 2;
   const { blocks, blocksBottom } = collectionLayout(posterSize, hikes.length);
 
+  // Pre-calculate uniform mountain name font size so none get truncated
+  let minNameSize = H;
+  ctx.save();
   for (let i = 0; i < hikes.length; i++) {
     const g = blocks[i];
-    await drawHikeBlock(ctx, posterSize, hikes[i], g, mm);
+    const rightW = g.rightRect.width;
+    const colW = mm(rightW);
+    const rh = g.rightRect.height;
+    const name = (hikes[i].mountainName || "GUNUNG").toUpperCase();
+
+    let nameSize = rh * 0.11;
+    ctx.font = `800 ${mm(nameSize)}px ${SANS}`;
+    while (ctx.measureText(name).width > colW && nameSize > rh * 0.02) {
+      nameSize *= 0.92;
+      ctx.font = `800 ${mm(nameSize)}px ${SANS}`;
+    }
+    if (nameSize < minNameSize) {
+      minNameSize = nameSize;
+    }
+  }
+  ctx.restore();
+
+  for (let i = 0; i < hikes.length; i++) {
+    const g = blocks[i];
+    await drawHikeBlock(ctx, posterSize, hikes[i], g, mm, minNameSize);
   }
 
   // 4. Expedition block.
@@ -270,7 +292,8 @@ async function drawHikeBlock(
   posterSize: PosterSize,
   hike: CollectionHike,
   geom: CollectionBlockGeom,
-  mm: (v: number) => number
+  mm: (v: number) => number,
+  sharedNameSize?: number
 ) {
   const { bx, by, bw, bh, mapRect, rightRect } = geom;
   const rightX = rightRect.x;
@@ -410,13 +433,17 @@ async function drawHikeBlock(
   // Mountain name: auto-shrink, then hard-truncate as a last resort so it can
   // never cross into the neighbouring block.
   let name = (hike.mountainName || "GUNUNG").toUpperCase();
-  let nameSize = rh * 0.11;
-  ctx.font = `800 ${mm(nameSize)}px ${SANS}`;
-  while (ctx.measureText(name).width > colW && nameSize > rh * 0.065) {
-    nameSize *= 0.92;
+  let nameSize = sharedNameSize ?? rh * 0.11;
+  if (!sharedNameSize) {
+    ctx.font = `800 ${mm(nameSize)}px ${SANS}`;
+    while (ctx.measureText(name).width > colW && nameSize > rh * 0.065) {
+      nameSize *= 0.92;
+      ctx.font = `800 ${mm(nameSize)}px ${SANS}`;
+    }
+    name = truncateToWidth(ctx, name, colW);
+  } else {
     ctx.font = `800 ${mm(nameSize)}px ${SANS}`;
   }
-  name = truncateToWidth(ctx, name, colW);
   setTextShadow(ctx, mm(1), mm(0.3), 0.5);
   ctx.fillStyle = CREAM;
   ctx.fillText(name, mm(rightX), mm(ry + rh * ROW.name));

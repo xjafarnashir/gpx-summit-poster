@@ -315,6 +315,33 @@ function CollectionPreview({ f }: { f: CollectionForm }) {
     .join("   |   ");
   const socials = [f.instagram.trim() && `IG ${f.instagram.trim()}`, f.tiktok.trim() && `TT ${f.tiktok.trim()}`].filter(Boolean).join("   ·   ");
 
+  // Pre-calculate uniform mountain name font size so none get truncated in the preview
+  let minNameFontSize = 16;
+  if (typeof document !== "undefined") {
+    _measureCanvas ??= document.createElement("canvas");
+    const testCtx = _measureCanvas.getContext("2d");
+    if (testCtx) {
+      f.hikes.forEach((h, i) => {
+        const bx = innerX + i * (blockW + gap);
+        const pad = blockW * 0.05;
+        const mapW = (blockW - pad * 2) * 0.47;
+        const rx = bx + pad + mapW + (blockW - pad * 2) * 0.07;
+        const rw = bx + blockW - pad - rx;
+        const nameText = up(h.gunung, `GUNUNG ${i + 1}`);
+
+        let fs = 16;
+        testCtx.font = `800 ${fs}px sans-serif`;
+        while (testCtx.measureText(nameText).width > rw && fs > 6) {
+          fs -= 0.5;
+          testCtx.font = `800 ${fs}px sans-serif`;
+        }
+        if (fs < minNameFontSize) {
+          minNameFontSize = fs;
+        }
+      });
+    }
+  }
+
   return (
     <svg viewBox="0 0 660 440" className="h-auto w-full" role="img" aria-label="Preview poster koleksi">
       <Defs />
@@ -334,7 +361,7 @@ function CollectionPreview({ f }: { f: CollectionForm }) {
             <rect x={bx + pad} y={44} width={mapW} height={216} rx={4} fill="url(#lo-map)" />
             <path d={`M${bx + pad + mapW * 0.45},252 C${bx + pad + mapW * 0.7},210 ${bx + pad + mapW * 0.4},170 ${bx + pad + mapW * 0.6},116 C${bx + pad + mapW * 0.78},74 ${bx + pad + mapW * 0.5},62 ${bx + pad + mapW * 0.62},50`} fill="none" stroke="#d6381d" strokeWidth="4.5" strokeLinecap="round" />
             <text x={rx} y={66} fontFamily="monospace" fontSize="8" letterSpacing="1" fill="rgba(251,245,234,0.6)">PENDAKIAN</text>
-            <text x={rx} y={86} fontFamily="sans-serif" fontSize="16" fontWeight="800" fill="#fbf5ea">{fit(up(h.gunung, `GUNUNG ${i + 1}`), 16, rw, { weight: "800" })}</text>
+            <text x={rx} y={86} fontFamily="sans-serif" fontSize={minNameFontSize} fontWeight="800" fill="#fbf5ea">{up(h.gunung, `GUNUNG ${i + 1}`)}</text>
             <text x={rx} y={100} fontFamily="monospace" fontSize="8" fill="#ffcf8a">{fit(`VIA ${up(h.via, "JALUR")}`, 8, rw, { mono: true })}</text>
             <text x={rx} y={128} fontFamily="sans-serif" fontSize="17" fontWeight="800" fill="#fbf5ea">{fit(h.ketinggian.trim() || "0", 17, rw * 0.62, { weight: "800" })}<tspan fontSize="9" fill="rgba(251,245,234,0.7)"> MDPL</tspan></text>
             <text x={rx} y={144} fontFamily="monospace" fontSize="8.5" fill="rgba(251,245,234,0.75)">{fit(`${h.jarak.trim() || "0"} KM · +${h.elevGain.trim() || "0"} M`, 8.5, rw, { mono: true })}</text>
