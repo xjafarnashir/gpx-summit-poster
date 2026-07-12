@@ -1,65 +1,62 @@
-import Image from "next/image";
+"use client";
+
+import Link from "next/link";
+import { ArrowRight, Box, Map as MapIcon, Printer } from "lucide-react";
+import AppHeader from "@/components/AppHeader";
+import SizeSetup from "@/components/SizeSetup";
+
+const FEATURES = [
+  { icon: MapIcon, label: "Peta & rute dari GPX" },
+  { icon: Printer, label: "Poster siap cetak (PNG 300 DPI)" },
+  { icon: Box, label: "File 3D print rute, skala 1:1" },
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="flex h-screen flex-col overflow-hidden">
+      <AppHeader />
+
+      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col overflow-y-auto px-4 py-8">
+        <section className="mb-8 text-center">
+          <h1 className="text-3xl font-extrabold tracking-tight text-[#3d3929] sm:text-4xl dark:text-[#f0eee4]">
+            Abadikan pendakianmu jadi poster
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-zinc-600 sm:text-base dark:text-zinc-400">
+            Upload rekaman GPX, atur cerita pendakianmu, lalu export poster siap
+            cetak — lengkap dengan file 3D print rute yang presisi 1:1 dengan
+            posternya.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+          <ul className="mx-auto mt-5 flex max-w-lg flex-wrap items-center justify-center gap-2">
+            {FEATURES.map((f) => (
+              <li
+                key={f.label}
+                className="clay-chip flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-zinc-600 dark:text-zinc-300"
+              >
+                <f.icon size={13} className="text-[#c05d3d] dark:text-[#e59a7c]" />
+                {f.label}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <div className="flex flex-col gap-6">
+          <SizeSetup />
+
+          <div className="flex items-center justify-end gap-3">
+            <Link
+              href="/editor"
+              className="clay-btn flex items-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-6 py-3 text-sm font-semibold text-white transition-all hover:-translate-y-0.5 active:translate-y-0"
+            >
+              Lanjut ke Editor
+              <ArrowRight size={15} />
+            </Link>
+          </div>
         </div>
       </main>
+
+      <footer className="border-t border-zinc-200/70 py-5 text-center text-xs text-zinc-400 dark:border-zinc-800/70 dark:text-zinc-600">
+        GPX Summit Poster — peta © OpenStreetMap · © CARTO · © OpenTopoMap
+      </footer>
     </div>
   );
 }
