@@ -70,6 +70,8 @@ export interface CollectionData {
   tiktok: string;
   /** Link untuk QR code di poster (Strava/Linktree/sosmed, bebas). */
   qrCodeUrl: string;
+  /** Preset gradasi latar poster (lihat lib/backgroundThemes). */
+  backgroundTheme: string;
   hikes: CollectionHike[];
 }
 
@@ -141,6 +143,12 @@ export interface ThemeSettings {
   backgroundImageOpacity: number;
   /** Pan/zoom of the background photo within the poster frame (like PhotoTransform). */
   backgroundImageTransform: PhotoTransform;
+  /** Brightness multiplier for the sunset gradient. 1 = normal, >1 = brighter. */
+  gradientBrightness: number;
+  /** Brightness multiplier for the background photo. 1 = normal, >1 = brighter. */
+  backgroundImageBrightness: number;
+  /** Preset gradasi latar poster (lihat lib/backgroundThemes). */
+  backgroundTheme: string;
 }
 
 export interface Export3DSettings {

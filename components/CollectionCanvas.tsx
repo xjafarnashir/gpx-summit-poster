@@ -16,10 +16,12 @@ export default function CollectionCanvas() {
 
   const posterSize = useAppStore((s) => s.posterSize);
   const collection = useAppStore((s) => s.collection);
+  const theme = useAppStore((s) => s.theme);
 
   // Compact dependency signature — avoid stringifying full GPX point arrays.
   const depsKey = JSON.stringify({
     posterSize,
+    theme: { gradientBrightness: theme.gradientBrightness },
     exp: {
       t: collection.expeditionTitle,
       d: collection.expeditionDesc,
@@ -27,6 +29,7 @@ export default function CollectionCanvas() {
       ig: collection.instagram,
       tt: collection.tiktok,
       qr: collection.qrCodeUrl,
+      bg: collection.backgroundTheme,
     },
     hikes: collection.hikes.map((h) => ({
       id: h.id,
@@ -53,7 +56,7 @@ export default function CollectionCanvas() {
       setRendering(true);
       setError(null);
       const pxPerMm = PREVIEW_TARGET_WIDTH_PX / posterSize.widthMm;
-      renderCollectionPoster({ posterSize, collection, pxPerMm })
+      renderCollectionPoster({ posterSize, collection, pxPerMm, theme })
         .then((canvas) => {
           if (cancelled) return;
           const target = canvasRef.current;
@@ -81,7 +84,7 @@ export default function CollectionCanvas() {
     setError(null);
     try {
       const pxPerMm = posterSize.dpi / 25.4;
-      const canvas = await renderCollectionPoster({ posterSize, collection, pxPerMm });
+      const canvas = await renderCollectionPoster({ posterSize, collection, pxPerMm, theme });
       const filename = `poster-koleksi-${(collection.expeditionTitle || "ekspedisi").replace(/\s+/g, "-").toLowerCase()}.png`;
       downloadCollectionPng(canvas, filename);
     } catch (e) {

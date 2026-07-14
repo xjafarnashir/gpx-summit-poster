@@ -3,6 +3,7 @@ import { mapAreaLatLonBounds, mapAreaRotatedBasemap, projectRoute, toPosterMm } 
 import { fetchStitchedBasemap } from "@/lib/tileFetcher";
 import { computeImageRect } from "@/lib/photoTransform";
 import { DEFAULT_PHOTO_TRANSFORM } from "@/lib/photoTransform";
+import { bgThemeById } from "@/lib/backgroundThemes";
 import { generateQrDataUrl } from "@/lib/qr";
 
 /* ============================================================================
@@ -21,20 +22,13 @@ const GOLD = "#ffcf8a";
 const SANS = '"Arial Narrow", "Arial", sans-serif';
 const MONO = '"Courier New", ui-monospace, monospace';
 
-const BG_STOPS: [number, string][] = [
-  [0.0, "#181433"],
-  [0.4, "#241d45"],
-  [0.7, "#4a3346"],
-  [0.88, "#8a4f26"],
-  [1.0, "#b0692a"],
-];
-
 const MAP_THEME = "topo" as const;
 
 export interface RenderCollectionParams {
   posterSize: PosterSize;
   collection: CollectionData;
   pxPerMm: number;
+  theme: import("@/types").ThemeSettings;
 }
 
 export interface CollectionBlockGeom {
@@ -169,8 +163,10 @@ function hikerIconImage(color: string, size = 64): Promise<HTMLImageElement> {
   const key = `${color}-${size}`;
   const cached = hikerCache.get(key);
   if (cached) return Promise.resolve(cached);
+  // `translate(24,0) scale(-1,1)` mencerminkan horizontal → hiker menghadap KIRI.
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}">` +
+    `<g transform="translate(24,0) scale(-1,1)">` +
     `<g fill="${color}">` +
     `<circle cx="11.4" cy="3.9" r="2.05"/>` +
     `<rect x="6.4" y="6.2" width="3.9" height="5.9" rx="1.7" transform="rotate(9 8.35 9.15)"/>` +
@@ -180,6 +176,7 @@ function hikerIconImage(color: string, size = 64): Promise<HTMLImageElement> {
     `<rect x="10.7" y="6.5" width="4.9" height="2.0" rx="1.0" transform="rotate(24 13.15 7.5)"/>` +
     `</g>` +
     `<line x1="15.6" y1="8.7" x2="17.8" y2="20.6" stroke="${color}" stroke-width="1.25" stroke-linecap="round"/>` +
+    `</g>` +
     `</svg>`;
   return loadImageFromUrl(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`).then((img) => {
     hikerCache.set(key, img);
@@ -230,7 +227,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidthPx: numbe
 /* ------------------------------- renderer -------------------------------- */
 
 export async function renderCollectionPoster(params: RenderCollectionParams): Promise<HTMLCanvasElement> {
-  const { posterSize, collection, pxPerMm } = params;
+  const { posterSize, collection, pxPerMm, theme } = params;
   const { widthMm: W, heightMm: H, marginMm: m } = posterSize;
   const mm = (v: number) => v * pxPerMm;
 
@@ -241,10 +238,15 @@ export async function renderCollectionPoster(params: RenderCollectionParams): Pr
   if (!ctx) throw new Error("Canvas 2D context tidak tersedia.");
 
   // 1. Background gradient.
+  ctx.save();
+  if (theme.gradientBrightness && theme.gradientBrightness !== 1) {
+    ctx.filter = `brightness(${theme.gradientBrightness})`;
+  }
   const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  for (const [s, c] of BG_STOPS) bg.addColorStop(s, c);
+  for (const [s, c] of bgThemeById(collection.backgroundTheme).stops) bg.addColorStop(s, c);
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
 
   // 2. Frame + corner brackets.
   drawFrame(ctx, posterSize, mm);
@@ -443,6 +445,10 @@ async function drawHikeBlock(
     name = truncateToWidth(ctx, name, colW);
   } else {
     ctx.font = `800 ${mm(nameSize)}px ${SANS}`;
+    // Jaring terakhir: ukuran bersama sudah dihitung agar semua nama muat,
+    // tapi nama ekstrem panjang (mentok di floor pre-pass) tetap tak boleh
+    // menyeberang ke blok sebelah. No-op bila muat.
+    name = truncateToWidth(ctx, name, colW);
   }
   setTextShadow(ctx, mm(1), mm(0.3), 0.5);
   ctx.fillStyle = CREAM;

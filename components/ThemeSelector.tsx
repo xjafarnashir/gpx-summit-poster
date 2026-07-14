@@ -4,6 +4,7 @@ import { Palette } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { compressImageToDataUrl } from "@/lib/image";
 import { DEFAULT_PHOTO_TRANSFORM } from "@/lib/photoTransform";
+import { BACKGROUND_THEMES } from "@/lib/backgroundThemes";
 import PhotoCropper from "@/components/PhotoCropper";
 import type { MapTheme } from "@/types";
 
@@ -115,6 +116,30 @@ export default function ThemeSelector() {
 
       <div className="my-4 border-t border-dashed border-zinc-200 dark:border-zinc-800" />
 
+      {/* Tema latar poster (preset gradasi). */}
+      <div className="text-sm text-zinc-600 dark:text-zinc-300">
+        <span className="font-medium">Tema latar poster</span>
+        <div className="mt-2 grid grid-cols-4 gap-2">
+          {BACKGROUND_THEMES.map((bt) => (
+            <button
+              key={bt.id}
+              type="button"
+              onClick={() => setTheme({ backgroundTheme: bt.id })}
+              className={`clay-tile flex flex-col items-center gap-1 px-1 py-2 text-center text-[11px] font-medium transition-colors ${
+                (theme.backgroundTheme ?? "sunset") === bt.id
+                  ? "border-[#d97757] text-[#9c4a2c] dark:border-[#d97757] dark:text-[#e59a7c]"
+                  : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+              }`}
+            >
+              <span className="h-7 w-7 rounded-full border border-black/10" style={{ background: bt.css }} />
+              {bt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="my-4 border-t border-dashed border-zinc-200 dark:border-zinc-800" />
+
       {/* Background poster: foto opsional di atas gradasi sunset. */}
       <div className="text-sm text-zinc-600 dark:text-zinc-300">
         <span className="font-medium">Foto background poster</span>
@@ -137,22 +162,55 @@ export default function ThemeSelector() {
         </div>
 
         {theme.backgroundImage && (
-          <label className="mt-3 block">
-            Transparansi foto ({Math.round(theme.backgroundImageOpacity * 100)}%)
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={theme.backgroundImageOpacity}
-              onChange={(e) => setTheme({ backgroundImageOpacity: Number(e.target.value) })}
-              className="mt-2 w-full"
-            />
-            <p className="mt-0.5 text-xs text-zinc-400">
-              0% = warna sunset penuh · 100% = foto penuh.
-            </p>
-          </label>
+          <>
+            <label className="mt-3 block">
+              Transparansi foto ({Math.round(theme.backgroundImageOpacity * 100)}%)
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={theme.backgroundImageOpacity}
+                onChange={(e) => setTheme({ backgroundImageOpacity: Number(e.target.value) })}
+                className="mt-2 w-full"
+              />
+              <p className="mt-0.5 text-xs text-zinc-400">
+                0% = warna sunset penuh · 100% = foto penuh.
+              </p>
+            </label>
+            <label className="mt-3 block text-sm text-zinc-600 dark:text-zinc-300">
+              <div className="flex items-center justify-between">
+                <span>Kecerahan foto background</span>
+                <span className="font-mono text-xs text-zinc-500">{(theme.backgroundImageBrightness ?? 1).toFixed(2)}x</span>
+              </div>
+              <input
+                type="range"
+                min={0.2}
+                max={2}
+                step={0.05}
+                value={theme.backgroundImageBrightness ?? 1}
+                onChange={(e) => setTheme({ backgroundImageBrightness: Number(e.target.value) })}
+                className="mt-2 w-full"
+              />
+            </label>
+          </>
         )}
+
+        <label className="mt-4 block text-sm text-zinc-600 dark:text-zinc-300">
+          <div className="flex items-center justify-between">
+            <span>Kecerahan gradien background</span>
+            <span className="font-mono text-xs text-zinc-500">{(theme.gradientBrightness ?? 1).toFixed(2)}x</span>
+          </div>
+          <input
+            type="range"
+            min={0.2}
+            max={2}
+            step={0.05}
+            value={theme.gradientBrightness ?? 1}
+            onChange={(e) => setTheme({ gradientBrightness: Number(e.target.value) })}
+            className="mt-2 w-full"
+          />
+        </label>
       </div>
     </div>
   );

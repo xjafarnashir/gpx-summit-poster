@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ArrowUpRight, Check, MessageCircle, Plus, Trash2 } from "lucide-react";
 import { PACKAGES, WA_NUMBER, packageById, type PackageId, type PosterPackage } from "@/lib/landing";
+import { BACKGROUND_THEMES, bgThemeById, type BackgroundThemeId } from "@/lib/backgroundThemes";
 
 /* ============================================================================
  * Bagian PESAN di landing page: pilih jenis (1 pendakian / koleksi 2-3 gunung),
@@ -86,10 +87,11 @@ const num = (s: string): number => {
 
 const waUrl = (text: string) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(text)}`;
 
-function buildMsgSingle(pkg: PosterPackage, f: SingleForm): string {
+function buildMsgSingle(pkg: PosterPackage, bgLabel: string, f: SingleForm): string {
   const lines = [
     `Halo! Saya mau pesan *Poster Pendakian 20x30 cm landscape + jalur 3D timbul*.`,
     `Paket: *${pkg.name}* — ${pkg.mount} (${pkg.price})`,
+    `Tema latar: ${bgLabel}`,
     "",
     "Data poster:",
     `- Nama: ${f.nama.trim()}`,
@@ -110,10 +112,11 @@ function buildMsgSingle(pkg: PosterPackage, f: SingleForm): string {
   return lines.join("\n");
 }
 
-function buildMsgCollection(pkg: PosterPackage, f: CollectionForm): string {
+function buildMsgCollection(pkg: PosterPackage, bgLabel: string, f: CollectionForm): string {
   const lines = [
     `Halo! Saya mau pesan *Poster Koleksi Ekspedisi (${f.hikes.length} gunung) 20x30 cm + jalur 3D timbul*.`,
     `Paket: *${pkg.name}* — ${pkg.mount} (${pkg.price})`,
+    `Tema latar: ${bgLabel}`,
     "",
     "Data ekspedisi:",
     `- Judul: ${f.judul.trim()}`,
@@ -143,15 +146,13 @@ function buildMsgCollection(pkg: PosterPackage, f: CollectionForm): string {
 
 const SKY = "url(#lo-sky)";
 
-function Defs() {
+function Defs({ stops }: { stops: [number, string][] }) {
   return (
     <defs>
       <linearGradient id="lo-sky" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0" stopColor="#181433" />
-        <stop offset="0.4" stopColor="#241d45" />
-        <stop offset="0.7" stopColor="#4a3346" />
-        <stop offset="0.88" stopColor="#8a4f26" />
-        <stop offset="1" stopColor="#b0692a" />
+        {stops.map(([o, c]) => (
+          <stop key={o} offset={o} stopColor={c} />
+        ))}
       </linearGradient>
       <linearGradient id="lo-map" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stopColor="#4c4f52" />
@@ -185,7 +186,7 @@ function fit(text: string, fontPx: number, maxUnits: number, opts?: { weight?: s
 /** Ikon hiker mini (bentuk sama dengan poster editor), untuk depan nama pendaki. */
 function HikerGlyph({ x, y, size, color = "#ffcf8a" }: { x: number; y: number; size: number; color?: string }) {
   return (
-    <g transform={`translate(${x} ${y}) scale(${size / 24})`}>
+    <g transform={`translate(${x} ${y}) scale(${size / 24}) translate(24,0) scale(-1,1)`}>
       <g fill={color}>
         <circle cx="11.4" cy="3.9" r="2.05" />
         <rect x="6.4" y="6.2" width="3.9" height="5.9" rx="1.7" transform="rotate(9 8.35 9.15)" />
@@ -232,13 +233,13 @@ function ClimberLine({ cx, baseY, name, fs, iconSize }: { cx: number; baseY: num
   );
 }
 
-function SinglePreview({ f }: { f: SingleForm }) {
+function SinglePreview({ f, stops }: { f: SingleForm; stops: [number, string][] }) {
   const hasQr = f.linkQr.trim().length > 0;
   const meta = [f.nama.trim() || "Nama pendaki", f.tanggal.trim()].filter(Boolean).join("   ·   ");
   const socials = [f.instagram.trim() && `IG ${f.instagram.trim()}`, f.tiktok.trim() && `TT ${f.tiktok.trim()}`].filter(Boolean).join("   ·   ");
   return (
     <svg viewBox="0 0 660 440" className="h-auto w-full" role="img" aria-label="Preview poster">
-      <Defs />
+      <Defs stops={stops} />
       <rect width="660" height="440" fill={SKY} />
       <rect x="16" y="16" width="628" height="408" fill="none" stroke="rgba(251,245,234,0.28)" strokeWidth="0.9" />
 
@@ -293,7 +294,7 @@ function SinglePreview({ f }: { f: SingleForm }) {
   );
 }
 
-function CollectionPreview({ f }: { f: CollectionForm }) {
+function CollectionPreview({ f, stops }: { f: CollectionForm; stops: [number, string][] }) {
   const n = f.hikes.length;
   const innerX = 33;
   const innerW = 594;
@@ -344,7 +345,7 @@ function CollectionPreview({ f }: { f: CollectionForm }) {
 
   return (
     <svg viewBox="0 0 660 440" className="h-auto w-full" role="img" aria-label="Preview poster koleksi">
-      <Defs />
+      <Defs stops={stops} />
       <rect width="660" height="440" fill={SKY} />
       <rect x="14" y="14" width="632" height="412" fill="none" stroke="rgba(251,245,234,0.28)" strokeWidth="0.9" />
 
@@ -464,7 +465,9 @@ export default function LandingOrder() {
   const [single, setSingle] = useState<SingleForm>(EMPTY_SINGLE);
   const [collection, setCollection] = useState<CollectionForm>(EMPTY_COLLECTION);
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
+  const [bgTheme, setBgTheme] = useState<BackgroundThemeId>("sunset");
   const pkg = pkgId ? packageById(pkgId) : null;
+  const bg = bgThemeById(bgTheme);
 
   const patchS = (p: Partial<SingleForm>) => setSingle((f) => ({ ...f, ...p }));
   const patchC = (p: Partial<CollectionForm>) => setCollection((f) => ({ ...f, ...p }));
@@ -488,7 +491,7 @@ export default function LandingOrder() {
       document.getElementById("lo-paket")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    setConfirmMsg(mode === "single" ? buildMsgSingle(pkg, single) : buildMsgCollection(pkg, collection));
+    setConfirmMsg(mode === "single" ? buildMsgSingle(pkg, bg.label, single) : buildMsgCollection(pkg, bg.label, collection));
   };
 
   return (
@@ -522,12 +525,34 @@ export default function LandingOrder() {
         <div className="lg:sticky lg:top-24 lg:self-start">
           <div className="clay-card overflow-hidden !rounded-xl p-2 shadow-lg">
             <div className="overflow-hidden rounded-lg">
-              {mode === "single" ? <SinglePreview f={single} /> : <CollectionPreview f={collection} />}
+              {mode === "single" ? <SinglePreview f={single} stops={bg.stops} /> : <CollectionPreview f={collection} stops={bg.stops} />}
             </div>
           </div>
           <p className="mt-2 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400 dark:text-zinc-500">
             Preview langsung · {pkg ? pkg.name : "pilih paket"} · 20x30 cm
           </p>
+
+          {/* tema latar */}
+          <div className="mt-4">
+            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Tema latar</span>
+            <div className="mt-2 grid grid-cols-4 gap-2">
+              {BACKGROUND_THEMES.map((bt) => (
+                <button
+                  key={bt.id}
+                  type="button"
+                  onClick={() => setBgTheme(bt.id)}
+                  className={`clay-tile flex flex-col items-center gap-1 px-1 py-2 text-center text-[11px] font-medium transition-colors ${
+                    bgTheme === bt.id
+                      ? "border-[#d97757] text-[#9c4a2c] dark:border-[#d97757] dark:text-[#e59a7c]"
+                      : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+                  }`}
+                >
+                  <span className="h-6 w-6 rounded-full border border-black/10" style={{ background: bt.css }} />
+                  {bt.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* pilih paket — di bawah preview, wajib */}
           <div className="mt-5">

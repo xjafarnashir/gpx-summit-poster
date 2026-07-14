@@ -12,6 +12,7 @@ import { generateQrDataUrl } from "@/lib/qr";
 import { haversineMeters } from "@/lib/geo";
 import { MARKER_COLORS } from "@/lib/mapIcons";
 import { DEFAULT_PHOTO_TRANSFORM, computeImageRect } from "@/lib/photoTransform";
+import { bgThemeById } from "@/lib/backgroundThemes";
 import { getIconImage } from "@/lib/canvasIcons";
 import { Calendar, MapPin } from "lucide-react";
 import {
@@ -39,16 +40,6 @@ const CREAM_SOFT = "rgba(251,245,234,0.82)";
 const CREAM_MUTED = "rgba(251,245,234,0.62)";
 const CREAM_FAINT = "rgba(251,245,234,0.32)";
 const GOLD = "#ffcf8a";
-
-/** Poster background gradient stops (top deep indigo → bottom warm amber). */
-const BG_STOPS: [number, string][] = [
-  [0.0, "#1c1740"],
-  [0.3, "#282050"],
-  [0.48, "#43324d"],
-  [0.62, "#743f30"],
-  [0.78, "#9e5a25"],
-  [1.0, "#b9752b"],
-];
 
 /** Sets a soft drop shadow for legible text over the map/gradient. */
 function setTextShadow(ctx: CanvasRenderingContext2D, blurPx: number, dy = 0, alpha = 0.55) {
@@ -147,11 +138,24 @@ export async function renderPoster(params: RenderPosterParams): Promise<HTMLCanv
   if (!ctx) throw new Error("Canvas 2D context tidak tersedia.");
 
   // 1. Background gradient (navy -> amber), then optional photo backdrop on top.
+  // 1a. Background gradient (navy -> amber)
+  ctx.save();
+  if (theme.gradientBrightness && theme.gradientBrightness !== 1) {
+    ctx.filter = `brightness(${theme.gradientBrightness})`;
+  }
   const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  for (const [stop, color] of BG_STOPS) bg.addColorStop(stop, color);
+  for (const [stop, color] of bgThemeById(theme.backgroundTheme).stops) bg.addColorStop(stop, color);
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
+
+  // 1b. Optional photo backdrop on top
+  ctx.save();
+  if (theme.backgroundImageBrightness && theme.backgroundImageBrightness !== 1) {
+    ctx.filter = `brightness(${theme.backgroundImageBrightness})`;
+  }
   await drawBackgroundImage(ctx, canvas, theme);
+  ctx.restore();
 
   // 2. Frame + corner brackets
   drawFrame(ctx, posterSize, mm);
@@ -306,7 +310,7 @@ async function renderPosterLandscape(params: RenderPosterParams): Promise<HTMLCa
 
   // 1. Background gradient + optional photo backdrop + frame (shared w/ portrait).
   const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  for (const [stop, color] of BG_STOPS) bg.addColorStop(stop, color);
+  for (const [stop, color] of bgThemeById(theme.backgroundTheme).stops) bg.addColorStop(stop, color);
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   await drawBackgroundImage(ctx, canvas, theme);

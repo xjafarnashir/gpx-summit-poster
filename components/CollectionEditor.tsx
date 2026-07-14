@@ -9,6 +9,7 @@ import { DEFAULT_PHOTO_TRANSFORM } from "@/lib/photoTransform";
 import PhotoCropper from "@/components/PhotoCropper";
 import Collection3DPanel from "@/components/Collection3DPanel";
 import { collectionPhotoAspect } from "@/lib/exportCollectionPng";
+import { BACKGROUND_THEMES } from "@/lib/backgroundThemes";
 import type { CollectionHike } from "@/types";
 
 const inputClass =
@@ -270,6 +271,8 @@ export default function CollectionEditor() {
   const collection = useAppStore((s) => s.collection);
   const setCollectionMeta = useAppStore((s) => s.setCollectionMeta);
   const addHike = useAppStore((s) => s.addHike);
+  const theme = useAppStore((s) => s.theme);
+  const setTheme = useAppStore((s) => s.setTheme);
 
   const { hikes } = collection;
   const totalElevation = hikes.reduce((sum, h) => sum + (h.summitElevationM || 0), 0);
@@ -353,6 +356,44 @@ export default function CollectionEditor() {
             />
           </label>
         </div>
+        <div className="mt-3">
+          <span className={labelClass}>Tema latar poster</span>
+          <div className="mt-1.5 grid grid-cols-4 gap-2">
+            {BACKGROUND_THEMES.map((bt) => (
+              <button
+                key={bt.id}
+                type="button"
+                onClick={() => setCollectionMeta({ backgroundTheme: bt.id })}
+                className={`clay-tile flex flex-col items-center gap-1 px-1 py-2 text-center text-[11px] font-medium transition-colors ${
+                  (collection.backgroundTheme ?? "sunset") === bt.id
+                    ? "border-[#d97757] text-[#9c4a2c] dark:border-[#d97757] dark:text-[#e59a7c]"
+                    : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+                }`}
+              >
+                <span className="h-7 w-7 rounded-full border border-black/10" style={{ background: bt.css }} />
+                {bt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <label className="mt-4 block text-sm text-zinc-600 dark:text-zinc-300">
+          <div className="flex items-center justify-between">
+            <span>Kecerahan background gradien</span>
+            <span className="font-mono text-xs text-zinc-500">{(theme.gradientBrightness ?? 1).toFixed(2)}x</span>
+          </div>
+          <input
+            type="range"
+            min={0.2}
+            max={2}
+            step={0.05}
+            value={theme.gradientBrightness ?? 1}
+            onChange={(e) => setTheme({ gradientBrightness: Number(e.target.value) })}
+            className="mt-2 w-full"
+          />
+          <p className="mt-0.5 text-xs text-zinc-400">
+            Geser ke kanan untuk menerangkan warna latar belakang gradien.
+          </p>
+        </label>
       </div>
 
       {/* Kartu pendakian */}

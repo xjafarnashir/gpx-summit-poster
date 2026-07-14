@@ -70,6 +70,9 @@ export const DEFAULT_THEME: ThemeSettings = {
   backgroundImage: undefined,
   backgroundImageOpacity: 0.5,
   backgroundImageTransform: DEFAULT_PHOTO_TRANSFORM,
+  gradientBrightness: 1,
+  backgroundImageBrightness: 1,
+  backgroundTheme: "sunset",
 };
 
 export const DEFAULT_EXPORT_3D: Export3DSettings = {
@@ -109,6 +112,7 @@ export const DEFAULT_COLLECTION: CollectionData = {
   instagram: "",
   tiktok: "",
   qrCodeUrl: "",
+  backgroundTheme: "sunset",
   hikes: [makeEmptyHike(), makeEmptyHike()],
 };
 
@@ -161,7 +165,7 @@ interface AppState {
   setStorageWarning: (msg: string | null) => void;
   setPosterMode: (mode: PosterMode) => void;
   setCollectionMeta: (
-    patch: Partial<Pick<CollectionData, "expeditionTitle" | "expeditionDesc" | "climberName" | "instagram" | "tiktok" | "qrCodeUrl">>
+    patch: Partial<Pick<CollectionData, "expeditionTitle" | "expeditionDesc" | "climberName" | "instagram" | "tiktok" | "qrCodeUrl" | "backgroundTheme">>
   ) => void;
   addHike: () => void;
   updateHike: (id: string, patch: Partial<CollectionHike>) => void;
