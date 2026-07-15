@@ -13,6 +13,7 @@ import { haversineMeters } from "@/lib/geo";
 import { MARKER_COLORS } from "@/lib/mapIcons";
 import { DEFAULT_PHOTO_TRANSFORM, computeImageRect } from "@/lib/photoTransform";
 import { bgThemeById } from "@/lib/backgroundThemes";
+import { hikerIconImage } from "@/lib/hikerIcon";
 import { getIconImage } from "@/lib/canvasIcons";
 import { Calendar, MapPin } from "lucide-react";
 import {
@@ -454,9 +455,10 @@ async function renderPosterLandscape(params: RenderPosterParams): Promise<HTMLCa
     setLetterSpacing(ctx, 0);
   }
 
-  // --- 3d. Climber + date row (mini icons) ---
-  const metaItems: { icon: typeof MapPin; text: string }[] = [];
-  if (stats.climberName) metaItems.push({ icon: MapPin, text: stats.climberName });
+  // --- 3d. Climber + date row (mini icons). Nama pendaki pakai ikon hiker
+  //         (sama dengan poster koleksi); tanggal pakai ikon kalender. ---
+  const metaItems: { icon: typeof MapPin | null; text: string }[] = [];
+  if (stats.climberName) metaItems.push({ icon: null, text: stats.climberName });
   if (stats.date) metaItems.push({ icon: Calendar, text: stats.date.toUpperCase() });
   if (metaItems.length > 0) {
     const metaSize = heightMm * 0.0175;
@@ -466,9 +468,10 @@ async function renderPosterLandscape(params: RenderPosterParams): Promise<HTMLCa
     ctx.textBaseline = "alphabetic";
     let mx = rx;
     for (const item of metaItems) {
-      const icon = await getIconImage(item.icon, "#ffcf8a", 48);
-      ctx.drawImage(icon, mm(mx), mm(cursor - iconMm * 0.82), mm(iconMm), mm(iconMm));
-      mx += iconMm + heightMm * 0.006;
+      const hikerMm = item.icon ? iconMm : iconMm * 1.35;
+      const icon = item.icon ? await getIconImage(item.icon, "#ffcf8a", 48) : await hikerIconImage("#ffcf8a", 72);
+      ctx.drawImage(icon, mm(mx), mm(cursor - hikerMm * 0.82), mm(hikerMm), mm(hikerMm));
+      mx += hikerMm + heightMm * 0.006;
       ctx.fillStyle = CREAM_SOFT;
       setTextShadow(ctx, mm(0.8), mm(0.2), 0.4);
       ctx.fillText(item.text, mm(mx), mm(cursor));
