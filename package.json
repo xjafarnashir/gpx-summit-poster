@@ -13,6 +13,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@turf/turf": "^7.3.5",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.22.0",
     "maplibre-gl": "^5.24.0",
     "next": "16.2.9",

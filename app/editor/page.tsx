@@ -6,6 +6,7 @@ import { ChevronLeft, RotateCcw, Sparkles, TriangleAlert, X } from "lucide-react
 import AppHeader from "@/components/AppHeader";
 import CollectionCanvas from "@/components/CollectionCanvas";
 import CollectionEditor from "@/components/CollectionEditor";
+import ExportFullButton from "@/components/ExportFullButton";
 import ExportPngButton from "@/components/ExportPngButton";
 import GpxUpload from "@/components/GpxUpload";
 import ImportOrderPanel from "@/components/ImportOrderPanel";
@@ -92,6 +93,7 @@ export default function EditorPage() {
               <span className="hidden sm:inline">Isi Contoh Data</span>
             </button>
             <ExportPngButton />
+            <ExportFullButton />
             <button
               type="button"
               onClick={handleReset}

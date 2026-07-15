@@ -324,9 +324,9 @@ export default function CollectionEditor() {
             className={inputClass}
           />
         </label>
-        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mt-3 grid grid-cols-2 gap-3">
           <label className={labelClass}>
-            Instagram <span className="font-normal text-zinc-400">(opsional)</span>
+            Instagram
             <input
               type="text"
               placeholder="@handle"
@@ -336,7 +336,7 @@ export default function CollectionEditor() {
             />
           </label>
           <label className={labelClass}>
-            TikTok <span className="font-normal text-zinc-400">(opsional)</span>
+            TikTok
             <input
               type="text"
               placeholder="@handle"
@@ -345,17 +345,17 @@ export default function CollectionEditor() {
               className={inputClass}
             />
           </label>
-          <label className={labelClass}>
-            Link QR code <span className="font-normal text-zinc-400">(opsional, bebas)</span>
-            <input
-              type="url"
-              placeholder="https://strava.com/... / linktr.ee/..."
-              value={collection.qrCodeUrl}
-              onChange={(e) => setCollectionMeta({ qrCodeUrl: e.target.value })}
-              className={inputClass}
-            />
-          </label>
         </div>
+        <label className={`${labelClass} mt-3 block`}>
+          Link QR code
+          <input
+            type="url"
+            placeholder="https://strava.com/... / linktr.ee/... (bebas, boleh kosong)"
+            value={collection.qrCodeUrl}
+            onChange={(e) => setCollectionMeta({ qrCodeUrl: e.target.value })}
+            className={inputClass}
+          />
+        </label>
         <div className="mt-3">
           <span className={labelClass}>Tema latar poster</span>
           <div className="mt-1.5 grid grid-cols-4 gap-2">
