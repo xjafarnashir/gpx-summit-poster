@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronLeft, FileQuestion, MessageCircle, Mountain } from "lucide-react";
 import LandingOrder from "@/components/LandingOrder";
+import ThemeToggle from "@/components/ThemeToggle";
 import { STEPS, WA_NUMBER, waAskGpxUrl } from "@/lib/landing";
 
 export const metadata: Metadata = {
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function PesanPage() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen overflow-x-clip">
       <header className="sticky top-0 z-40 px-4 pt-3 pb-1">
         <div className="clay-card mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 !rounded-full px-4">
           <Link href="/landingpage" className="flex min-w-0 items-center gap-2.5">
@@ -20,37 +21,47 @@ export default function PesanPage() {
             </span>
             <span className="truncate text-sm font-bold tracking-tight text-zinc-900 dark:text-zinc-50">myKoordinat</span>
           </Link>
-          <Link
-            href="/landingpage"
-            className="clay-chip flex shrink-0 items-center gap-1.5 px-4 py-2 text-xs font-medium text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100 sm:text-sm"
-          >
-            <ChevronLeft size={14} />
-            Kembali
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeToggle />
+            <Link
+              href="/landingpage"
+              className="clay-chip flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100 sm:text-sm"
+            >
+              <ChevronLeft size={14} />
+              Kembali
+            </Link>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl px-4 py-10 sm:py-14">
+      <main className="relative mx-auto w-full max-w-5xl px-4 py-10 sm:py-14">
+        {/* orb dekoratif */}
+        <div aria-hidden className="t3d-orb -left-28 top-4 h-64 w-64" />
+        <div aria-hidden className="t3d-orb -right-24 top-[30rem] h-56 w-56" />
+
         {/* ---- cara pesan ---- */}
-        <section>
-          <h1 className="text-2xl font-extrabold tracking-tight text-[#3d3929] sm:text-3xl dark:text-[#f0eee4]">Cara pesan</h1>
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {STEPS.map((s) => (
-              <div key={s.n} className="clay-card p-6">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#d97757] to-[#b8532f] text-sm font-bold text-white">
-                  {s.n}
-                </span>
-                <h3 className="mt-4 text-base font-semibold text-zinc-900 dark:text-zinc-100">{s.title}</h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">{s.desc}</p>
+        <section className="t3d-scene">
+          <h1 className="t3d-text t3d-in t3d-in-1 text-2xl font-extrabold tracking-tight text-[#3d3929] sm:text-3xl dark:text-[#f0eee4]">Cara pesan</h1>
+          <div className="mt-7 grid grid-cols-1 gap-6 sm:grid-cols-3">
+            {STEPS.map((s, i) => (
+              <div key={s.n} className={`t3d-in t3d-in-${i + 2} flex`}>
+                <div className={`t3d-card ${i % 2 === 1 ? "t3d-card-r" : ""} w-full p-6`}>
+                  <span className="t3d-coin flex h-10 w-10 items-center justify-center text-sm font-extrabold">
+                    {s.n}
+                  </span>
+                  <h3 className="mt-4 text-base font-semibold text-zinc-900 dark:text-zinc-100">{s.title}</h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">{s.desc}</p>
+                </div>
               </div>
             ))}
           </div>
         </section>
 
         {/* ---- banner: belum punya file GPX ---- */}
-        <section className="mt-10 sm:mt-14">
-          <div className="clay-card flex flex-col items-start gap-5 bg-gradient-to-r from-[#f7e9e1] to-[#faf9f5] p-6 sm:flex-row sm:items-center sm:gap-7 sm:p-7 dark:from-[#3a2a22] dark:to-[#30302e]">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#d97757] to-[#b8532f] text-white shadow-md">
+        <section className="t3d-scene mt-10 sm:mt-14">
+          <div className="t3d-reveal">
+          <div className="t3d-card flex flex-col items-start gap-5 !bg-gradient-to-r from-[#f7e9e1] to-[#faf9f5] p-6 sm:flex-row sm:items-center sm:gap-7 sm:p-7 dark:from-[#3a2a22] dark:to-[#30302e]">
+            <span className="t3d-coin flex h-12 w-12 shrink-0 items-center justify-center !rounded-2xl">
               <FileQuestion size={22} />
             </span>
             <div className="flex-1">
@@ -66,11 +77,12 @@ export default function PesanPage() {
               href={waAskGpxUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="clay-btn flex shrink-0 items-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:-translate-y-0.5"
+              className="t3d-btn flex shrink-0 items-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-5 py-2.5 text-sm font-semibold text-white"
             >
               <MessageCircle size={15} />
               Tanya Admin
             </a>
+          </div>
           </div>
         </section>
 

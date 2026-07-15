@@ -194,6 +194,291 @@ input:focus-visible {
   color: #ffffff;
 }
 
+/* ================= 3D LAYER (landing page & pesan) =================
+   Gaya "tactile 3D" di atas sistem clay: tombol extruded yang bisa
+   dipencet, kartu dengan slab ketebalan + tilt perspektif, elemen
+   melayang, dan koin nomor. Namespace t3d-* supaya tidak menabrak
+   komponen editor. */
+:root {
+  --t3d-edge: #8f3d20; /* sisi bawah (ketebalan) tombol terracotta */
+  --t3d-slab: rgba(120, 95, 65, 0.32); /* slab ketebalan kartu */
+}
+.dark {
+  --t3d-edge: #6e2d15;
+  --t3d-slab: rgba(0, 0, 0, 0.55);
+}
+
+/* Wadah perspektif — anak dengan transform 3D terasa punya kedalaman. */
+.t3d-scene {
+  perspective: 1400px;
+}
+
+/* Tombol extruded: punya "ketebalan" di bawah; hover terangkat, klik
+   benar-benar tertekan sampai rata. */
+.t3d-btn {
+  border: none;
+  border-radius: 999px;
+  box-shadow:
+    0 5px 0 var(--t3d-edge),
+    0 16px 26px -12px var(--clay-drop),
+    inset 0 2px 3px rgba(255, 255, 255, 0.4);
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease,
+    color 140ms ease;
+}
+.t3d-btn:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 7px 0 var(--t3d-edge),
+    0 22px 32px -12px var(--clay-drop),
+    inset 0 2px 3px rgba(255, 255, 255, 0.4);
+}
+.t3d-btn:active {
+  transform: translateY(4px);
+  box-shadow:
+    0 1px 0 var(--t3d-edge),
+    0 6px 10px -8px var(--clay-drop),
+    inset 0 2px 5px rgba(0, 0, 0, 0.25);
+}
+
+/* Kartu 3D: permukaan clay + slab ketebalan di belakang (offset), hover
+   terangkat & sedikit menghadap kamera. */
+.t3d-card {
+  position: relative;
+  background: var(--clay-surface);
+  border-radius: 1.5rem;
+  transform-style: preserve-3d;
+  box-shadow:
+    inset 0 2px 4px var(--clay-glow),
+    0 18px 40px -20px var(--clay-drop);
+  transition:
+    transform 380ms cubic-bezier(0.2, 0.8, 0.25, 1),
+    box-shadow 380ms cubic-bezier(0.2, 0.8, 0.25, 1);
+}
+.t3d-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--t3d-slab);
+  transform: translate(9px, 11px);
+  z-index: -1;
+}
+.t3d-card:hover {
+  transform: translateY(-6px) rotateX(1.5deg) rotateY(-1.5deg);
+  box-shadow:
+    inset 0 2px 4px var(--clay-glow),
+    0 30px 52px -22px var(--clay-drop);
+}
+.t3d-card-r:hover {
+  transform: translateY(-6px) rotateX(1.5deg) rotateY(1.5deg);
+}
+
+/* Poster hero: berdiri miring dalam scene, menghadap kamera saat hover. */
+.t3d-poster {
+  transform: rotateY(-11deg) rotateX(6deg) rotateZ(0.6deg);
+  transform-style: preserve-3d;
+  transition: transform 600ms cubic-bezier(0.2, 0.8, 0.25, 1);
+  box-shadow:
+    -26px 34px 64px -24px rgba(60, 40, 20, 0.55),
+    inset 0 2px 4px var(--clay-glow);
+}
+.t3d-scene:hover .t3d-poster {
+  transform: rotateY(-3deg) rotateX(1.5deg) rotateZ(0deg) scale(1.015);
+}
+
+/* Koin nomor 3D (langkah, badge). */
+.t3d-coin {
+  border-radius: 999px;
+  background: radial-gradient(circle at 32% 26%, #eb9873, #c05d3d 58%, #8f3d20);
+  color: #fff;
+  box-shadow:
+    0 4px 0 #6e2d15,
+    0 12px 18px -8px var(--clay-drop),
+    inset 0 2px 3px rgba(255, 255, 255, 0.55);
+}
+
+/* Judul dengan kedalaman lembut. */
+.t3d-text {
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.55),
+    0 3px 0 rgba(120, 95, 65, 0.14),
+    0 8px 18px rgba(120, 95, 65, 0.28);
+}
+.dark .t3d-text {
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.55),
+    0 8px 20px rgba(0, 0, 0, 0.55);
+}
+
+/* Orb gradasi dekoratif (di belakang konten). */
+.t3d-orb {
+  position: absolute;
+  border-radius: 999px;
+  background: radial-gradient(circle at 32% 30%, #f0b285, #d97757 72%);
+  filter: blur(64px);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.dark .t3d-orb {
+  opacity: 0.2;
+}
+
+/* Animasi melayang pelan. */
+@keyframes t3dFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-13px);
+  }
+}
+.t3d-float {
+  animation: t3dFloat 7s ease-in-out infinite;
+}
+.t3d-float-slow {
+  animation: t3dFloat 11s ease-in-out infinite;
+}
+
+/* --- Entrance saat load: fade-up berjenjang (hero). --- */
+@keyframes t3dIn {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.t3d-in {
+  animation: t3dIn 700ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+}
+.t3d-in-1 { animation-delay: 80ms; }
+.t3d-in-2 { animation-delay: 180ms; }
+.t3d-in-3 { animation-delay: 280ms; }
+.t3d-in-4 { animation-delay: 380ms; }
+.t3d-in-5 { animation-delay: 480ms; }
+
+/* Poster hero masuk: muncul dari kedalaman sambil berputar ke posisinya. */
+@keyframes t3dInPop {
+  from {
+    opacity: 0;
+    transform: translateY(34px) scale(0.94) rotateY(-24deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.t3d-in-pop {
+  animation: t3dInPop 900ms 200ms cubic-bezier(0.2, 0.8, 0.25, 1) both;
+  transform-style: preserve-3d;
+}
+
+/* --- Scroll-reveal: kartu naik saat masuk viewport (scroll-driven CSS;
+       browser lama tetap tampil normal tanpa animasi). --- */
+@keyframes t3dRise {
+  from {
+    opacity: 0;
+    transform: translateY(42px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@supports (animation-timeline: view()) {
+  .t3d-reveal {
+    animation: t3dRise both cubic-bezier(0.2, 0.8, 0.25, 1);
+    animation-timeline: view();
+    animation-range: entry 0% entry 55%;
+  }
+}
+
+/* --- Marquee strip spesifikasi: berjalan pelan tanpa henti. --- */
+@keyframes t3dMarquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.t3d-marquee {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.t3d-marquee > div {
+  display: flex;
+  width: max-content;
+  animation: t3dMarquee 26s linear infinite;
+}
+.t3d-marquee:hover > div {
+  animation-play-state: paused;
+}
+
+/* --- Orb latar bergeser pelan (drift). --- */
+@keyframes t3dDrift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(34px, -26px) scale(1.12);
+  }
+}
+.t3d-orb {
+  animation: t3dDrift 16s ease-in-out infinite alternate;
+}
+
+/* --- Jalur di ilustrasi 3D menggambar dirinya sendiri, berulang. --- */
+@keyframes t3dDraw {
+  0% {
+    stroke-dashoffset: 100;
+  }
+  55%,
+  80% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+.t3d-draw {
+  stroke-dasharray: 100;
+  animation: t3dDraw 4.5s ease-in-out infinite;
+}
+
+/* Ikon panah di tombol extruded ikut menunjuk saat hover. */
+.t3d-btn:hover > svg:last-child {
+  transform: translateX(3px);
+}
+.t3d-btn > svg:last-child {
+  transition: transform 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t3d-float,
+  .t3d-float-slow,
+  .t3d-in,
+  .t3d-in-pop,
+  .t3d-reveal,
+  .t3d-marquee > div,
+  .t3d-orb,
+  .t3d-draw {
+    animation: none;
+  }
+  .t3d-card,
+  .t3d-poster,
+  .t3d-btn {
+    transition: none;
+  }
+}
+
 /* Slightly nicer scrollbars on WebKit/Blink; harmless no-op elsewhere. */
 ::-webkit-scrollbar {
   width: 10px;

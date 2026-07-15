@@ -594,7 +594,7 @@ export default function LandingOrder() {
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         {/* preview */}
         <div className="lg:sticky lg:top-24 lg:self-start">
-          <div className="clay-card overflow-hidden !rounded-xl p-2 shadow-lg">
+          <div className="t3d-card overflow-hidden !rounded-xl p-2">
             <div className="overflow-hidden rounded-lg">
               {mode === "single" ? <SinglePreview f={single} stops={bg.stops} /> : <CollectionPreview f={collection} stops={bg.stops} />}
             </div>
@@ -733,7 +733,7 @@ export default function LandingOrder() {
 
           <button
             type="submit"
-            className="clay-btn mt-1 flex items-center justify-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-7 py-4 text-[15px] font-semibold text-white transition-all hover:-translate-y-0.5 active:translate-y-0"
+            className="t3d-btn mt-1 flex items-center justify-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-7 py-4 text-[15px] font-semibold text-white"
           >
             <MessageCircle size={17} /> Lanjut ke WhatsApp <ArrowUpRight size={15} />
           </button>
@@ -785,7 +785,7 @@ export default function LandingOrder() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setConfirmMsg(null)}
-                className="clay-btn flex items-center justify-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-6 py-2.5 text-sm font-semibold text-white transition-all hover:-translate-y-0.5"
+                className="t3d-btn flex items-center justify-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-6 py-2.5 text-sm font-semibold text-white"
               >
                 <MessageCircle size={15} /> Kirim ke WhatsApp <ArrowUpRight size={14} />
               </a>

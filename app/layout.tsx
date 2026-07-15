@@ -29,8 +29,9 @@ export const viewport: Viewport = {
 };
 
 /* Runs before paint so the right theme class is on <html> from the first
-   frame — no light-flash when the saved/OS preference is dark. */
-const themeInitScript = `(function(){try{var t=localStorage.getItem("theme");var d=t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.classList.toggle("dark",d);}catch(e){}})();`;
+   frame — no light-flash. DEFAULT = GELAP; terang hanya bila user memilih
+   lewat toggle (localStorage "light"). */
+const themeInitScript = `(function(){try{var t=localStorage.getItem("theme");document.documentElement.classList.toggle("dark",t!=="light");}catch(e){document.documentElement.classList.add("dark");}})();`;
 
 export default function RootLayout({
   children,

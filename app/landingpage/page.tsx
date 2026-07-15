@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Check, MessageCircle, Mountain } from "lucide-react";
+import ThemeToggle from "@/components/ThemeToggle";
 import { PACKAGES, WA_NUMBER } from "@/lib/landing";
 
 /* ============================================================================
@@ -49,8 +50,8 @@ function Visual3D() {
       <path d={d} fill="none" stroke="rgba(0,0,0,0.5)" strokeWidth="7" strokeLinecap="round" transform="translate(3.5,4.5)" />
       {/* badan jalur (dinding samping) */}
       <path d={d} fill="none" stroke="#b8b2a4" strokeWidth="7" strokeLinecap="round" transform="translate(1.5,2)" />
-      {/* permukaan atas terang */}
-      <path d={d} fill="none" stroke="#fdfaf2" strokeWidth="6" strokeLinecap="round" />
+      {/* permukaan atas terang — menggambar dirinya sendiri berulang */}
+      <path d={d} pathLength={100} className="t3d-draw" fill="none" stroke="#fdfaf2" strokeWidth="6" strokeLinecap="round" />
       <circle cx="102" cy="10" r="4.5" fill="#ef4444" stroke="#fff" strokeWidth="1.8" />
     </svg>
   );
@@ -131,7 +132,7 @@ const POSTER_CONTENTS: { n: string; title: string; desc: string; visual: React.R
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen overflow-x-clip">
       {/* ---- header ---- */}
       <header className="sticky top-0 z-40 px-4 pt-3 pb-1">
         <div className="clay-card mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 !rounded-full px-4">
@@ -143,36 +144,42 @@ export default function LandingPage() {
               myKoordinat
             </span>
           </div>
-          <Link
-            href={PESAN_HREF}
-            className="clay-btn flex shrink-0 items-center gap-1.5 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-4 py-2 text-xs font-semibold text-white transition-all hover:-translate-y-0.5 sm:text-sm"
-          >
-            <MessageCircle size={14} />
-            Pesan Sekarang
-          </Link>
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeToggle />
+            <Link
+              href={PESAN_HREF}
+              className="t3d-btn flex items-center gap-1.5 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-4 py-2 text-xs font-semibold text-white sm:text-sm"
+            >
+              <MessageCircle size={14} />
+              Pesan Sekarang
+            </Link>
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl px-4">
+      <main className="relative mx-auto w-full max-w-5xl px-4">
+        {/* orb dekoratif di belakang hero */}
+        <div aria-hidden className="t3d-orb -left-32 top-10 h-72 w-72" />
+        <div aria-hidden className="t3d-orb -right-24 top-[26rem] h-56 w-56" />
         {/* ---- hero ---- */}
         <section className="grid grid-cols-1 items-center gap-10 py-12 sm:py-16 lg:grid-cols-[5fr_6fr]">
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-[#b8532f] dark:text-[#e59a7c]">
+            <p className="t3d-in t3d-in-1 font-mono text-[11px] uppercase tracking-[0.25em] text-[#b8532f] dark:text-[#e59a7c]">
               Poster pendakian custom dari file GPX
             </p>
-            <h1 className="mt-4 text-4xl font-extrabold leading-[1.05] tracking-tight text-[#3d3929] sm:text-5xl dark:text-[#f0eee4]">
+            <h1 className="t3d-text t3d-in t3d-in-2 mt-4 text-4xl font-extrabold leading-[1.05] tracking-tight text-[#3d3929] sm:text-5xl dark:text-[#f0eee4]">
               Jejak pendakianmu, jadi poster yang layak dipajang.
             </h1>
-            <p className="mt-5 max-w-md text-[15px] leading-relaxed text-zinc-600 dark:text-zinc-400">
+            <p className="t3d-in t3d-in-3 mt-5 max-w-md text-[15px] leading-relaxed text-zinc-600 dark:text-zinc-400">
               Kirim rekaman GPX-mu, lalu jalur, pos, profil elevasi, dan statistik
               pendakianmu dirangkum jadi satu poster <strong className="font-semibold text-zinc-800 dark:text-zinc-200">20x30 cm</strong>,
               dengan <strong className="font-semibold text-zinc-800 dark:text-zinc-200">jalur dicetak timbul pakai 3D printer</strong> presisi
               1:1 mengikuti peta. Tiap poster dikerjakan satu-satu, bukan hasil template.
             </p>
 
-            <div className="mt-7 flex flex-wrap items-end gap-x-3 gap-y-2">
+            <div className="t3d-in t3d-in-4 mt-7 flex flex-wrap items-end gap-x-3 gap-y-2">
               <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Mulai</span>
-              <span className="text-4xl font-extrabold tracking-tight text-[#b8532f] dark:text-[#e59a7c]">
+              <span className="t3d-text text-4xl font-extrabold tracking-tight text-[#b8532f] dark:text-[#e59a7c]">
                 {HEMAT.price}
               </span>
               <span className="clay-chip mb-1 px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-widest text-[#9c4a2c] dark:text-[#e59a7c]">
@@ -180,10 +187,10 @@ export default function LandingPage() {
               </span>
             </div>
 
-            <div className="mt-7 flex flex-wrap items-center gap-4">
+            <div className="t3d-in t3d-in-5 mt-7 flex flex-wrap items-center gap-4">
               <Link
                 href={PESAN_HREF}
-                className="clay-btn flex items-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-7 py-3.5 text-sm font-semibold text-white transition-all hover:-translate-y-0.5 active:translate-y-0"
+                className="t3d-btn flex items-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-7 py-3.5 text-sm font-semibold text-white"
               >
                 Pilih paket & pesan
                 <ArrowRight size={15} />
@@ -194,53 +201,73 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <figure className="relative">
-            <div className="clay-card overflow-hidden !rounded-xl p-2 shadow-2xl transition-transform duration-300 hover:rotate-0 lg:rotate-1">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src="/contoh-poster-lawu.jpg"
-                alt="Hasil poster asli: Gunung Lawu via Cemoro Sewu. Peta jalur, profil elevasi, statistik, dua foto pendakian, dan QR code"
-                width={1800}
-                height={1200}
-                className="h-auto w-full rounded-lg"
-              />
+          <figure className="t3d-scene t3d-in-pop relative">
+            <div className="t3d-float">
+              <div className="t3d-poster overflow-hidden rounded-xl bg-[var(--clay-surface)] p-2">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/contoh-poster-lawu.jpg"
+                  alt="Hasil poster asli: Gunung Lawu via Cemoro Sewu. Peta jalur, profil elevasi, statistik, dua foto pendakian, dan QR code"
+                  width={1800}
+                  height={1200}
+                  className="h-auto w-full rounded-lg"
+                />
+              </div>
+              {/* chip spesifikasi melayang di sudut poster */}
+              <span className="t3d-coin t3d-float-slow absolute -left-3 top-6 px-3.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest sm:-left-6">
+                Jalur 3D timbul
+              </span>
+              <span className="t3d-coin t3d-float-slow absolute -right-2 bottom-10 px-3.5 py-1.5 font-mono text-[10px] font-bold uppercase tracking-widest [animation-delay:1.6s] sm:-right-5">
+                300 DPI
+              </span>
             </div>
-            <figcaption className="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400 dark:text-zinc-500">
+            <figcaption className="mt-4 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400 dark:text-zinc-500">
               Hasil asli: Gunung Lawu via Cemoro Sewu, 20x30 cm, 300 DPI
             </figcaption>
           </figure>
         </section>
 
-        {/* ---- strip spesifikasi ---- */}
-        <div className="border-y border-zinc-300/60 py-4 dark:border-zinc-700/60">
-          <p className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500 sm:text-[11px] dark:text-zinc-400">
-            <span>20x30 cm landscape</span>
-            <span className="text-[#c05d3d]">|</span>
-            <span>Jalur 3D timbul</span>
-            <span className="text-[#c05d3d]">|</span>
-            <span>Dari GPX asli</span>
-            <span className="text-[#c05d3d]">|</span>
-            <span>Jalur + pos + elevasi</span>
-            <span className="text-[#c05d3d]">|</span>
-            <span>300 DPI</span>
-          </p>
+        {/* ---- strip spesifikasi (marquee berjalan, pause saat hover) ---- */}
+        <div className="t3d-marquee border-y border-zinc-300/60 py-4 dark:border-zinc-700/60">
+          <div>
+            {[0, 1].map((dup) => (
+              <p
+                key={dup}
+                aria-hidden={dup === 1}
+                className="flex shrink-0 items-center gap-x-3 pr-3 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500 sm:text-[11px] dark:text-zinc-400"
+              >
+                <span>20x30 cm landscape</span>
+                <span className="text-[#c05d3d]">|</span>
+                <span>Jalur 3D timbul</span>
+                <span className="text-[#c05d3d]">|</span>
+                <span>Dari GPX asli</span>
+                <span className="text-[#c05d3d]">|</span>
+                <span>Jalur + pos + elevasi</span>
+                <span className="text-[#c05d3d]">|</span>
+                <span>300 DPI</span>
+                <span className="text-[#c05d3d]">|</span>
+              </p>
+            ))}
+          </div>
         </div>
 
         {/* ---- isi poster ---- */}
-        <section className="py-14 sm:py-20">
-          <h2 className="max-w-md text-2xl font-extrabold tracking-tight text-[#3d3929] sm:text-3xl dark:text-[#f0eee4]">
+        <section className="t3d-scene py-14 sm:py-20">
+          <h2 className="t3d-text max-w-md text-2xl font-extrabold tracking-tight text-[#3d3929] sm:text-3xl dark:text-[#f0eee4]">
             Yang tercetak di postermu
           </h2>
-          <div className="mt-8 divide-y divide-zinc-300/50 dark:divide-zinc-700/50">
-            {POSTER_CONTENTS.map((item) => (
-              <div key={item.n} className="flex items-center gap-5 py-5 sm:gap-7">
-                {item.visual}
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-3">
-                    <span className="font-mono text-sm text-[#c05d3d] dark:text-[#e59a7c]">{item.n}</span>
-                    <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{item.title}</h3>
+          <div className="mt-8 flex flex-col gap-5">
+            {POSTER_CONTENTS.map((item, i) => (
+              <div key={item.n} className="t3d-reveal">
+                <div className={`t3d-card ${i % 2 === 1 ? "t3d-card-r" : ""} flex items-center gap-5 p-5 sm:gap-7 sm:p-6`}>
+                  {item.visual}
+                  <div className="min-w-0">
+                    <div className="flex items-baseline gap-3">
+                      <span className="font-mono text-sm font-bold text-[#c05d3d] dark:text-[#e59a7c]">{item.n}</span>
+                      <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{item.title}</h3>
+                    </div>
+                    <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">{item.desc}</p>
                   </div>
-                  <p className="mt-1 text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">{item.desc}</p>
                 </div>
               </div>
             ))}
@@ -248,25 +275,27 @@ export default function LandingPage() {
         </section>
 
         {/* ---- paket ---- */}
-        <section className="pb-14 sm:pb-20">
-          <h2 className="text-2xl font-extrabold tracking-tight text-[#3d3929] sm:text-3xl dark:text-[#f0eee4]">
+        <section className="t3d-scene relative pb-14 sm:pb-20">
+          <div aria-hidden className="t3d-orb -left-24 bottom-0 h-64 w-64" />
+          <h2 className="t3d-text text-2xl font-extrabold tracking-tight text-[#3d3929] sm:text-3xl dark:text-[#f0eee4]">
             Pilih paketmu
           </h2>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-500 dark:text-zinc-400">
             Dua-duanya cetak tajam 300 DPI dengan jalur 3D timbul. Bedanya cuma
             di media pajang — pilih yang paling pas buat dindingmu.
           </p>
-          <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2">
-            {PACKAGES.map((p) => (
-              <div key={p.id} className="clay-card flex flex-col p-6 sm:p-7">
+          <div className="mt-8 grid grid-cols-1 gap-7 sm:grid-cols-2">
+            {PACKAGES.map((p, i) => (
+              <div key={p.id} className="t3d-reveal flex">
+              <div className={`t3d-card ${i % 2 === 1 ? "t3d-card-r" : ""} flex w-full flex-col p-6 sm:p-7`}>
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-50">{p.name}</h3>
-                  <span className="clay-chip px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-[#9c4a2c] dark:text-[#e59a7c]">
+                  <span className="t3d-coin px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide">
                     {p.badge}
                   </span>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-3xl font-extrabold tracking-tight text-[#b8532f] dark:text-[#e59a7c]">{p.price}</span>
+                  <span className="t3d-text text-3xl font-extrabold tracking-tight text-[#b8532f] dark:text-[#e59a7c]">{p.price}</span>
                   <span className="text-sm text-zinc-400">/ poster</span>
                 </div>
                 <p className="mt-1 text-sm font-medium text-zinc-600 dark:text-zinc-300">{p.tagline}</p>
@@ -280,11 +309,12 @@ export default function LandingPage() {
                 </ul>
                 <Link
                   href={PESAN_HREF}
-                  className="clay-btn mt-6 flex items-center justify-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-6 py-3 text-sm font-semibold text-white transition-all hover:-translate-y-0.5"
+                  className="t3d-btn mt-6 flex items-center justify-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-6 py-3 text-sm font-semibold text-white"
                 >
                   Pesan {p.name}
                   <ArrowRight size={15} />
                 </Link>
+              </div>
               </div>
             ))}
           </div>
