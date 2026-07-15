@@ -310,10 +310,15 @@ async function renderPosterLandscape(params: RenderPosterParams): Promise<HTMLCa
   if (!ctx) throw new Error("Canvas 2D context tidak tersedia.");
 
   // 1. Background gradient + optional photo backdrop + frame (shared w/ portrait).
+  ctx.save();
+  if (theme.gradientBrightness && theme.gradientBrightness !== 1) {
+    ctx.filter = `brightness(${theme.gradientBrightness})`;
+  }
   const bg = ctx.createLinearGradient(0, 0, 0, canvas.height);
   for (const [stop, color] of bgThemeById(theme.backgroundTheme).stops) bg.addColorStop(stop, color);
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.restore();
   await drawBackgroundImage(ctx, canvas, theme);
   drawFrame(ctx, posterSize, mm);
 
