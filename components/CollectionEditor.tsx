@@ -397,7 +397,8 @@ export default function CollectionEditor() {
       </div>
 
       {/* Kartu pendakian */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
+      {/* 1 kolom: editor sekarang hidup di kolom kanan yang ramping. */}
+      <div className="grid grid-cols-1 gap-6">
         {hikes.map((h, i) => (
           <HikeCard key={h.id} hike={h} index={i} />
         ))}

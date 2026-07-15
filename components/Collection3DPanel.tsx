@@ -120,12 +120,12 @@ export default function Collection3DPanel() {
               <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
                 {index + 1}. {h.mountainName || `Pendakian ${index + 1}`}
               </span>
-              <span className="flex gap-2">
+              <span className="flex w-full gap-2 sm:w-auto">
                 <button
                   type="button"
                   onClick={() => handleExport(h, "svg")}
                   disabled={busy !== null}
-                  className="clay-tile flex items-center gap-1.5 border-amber-300 px-3 py-1.5 text-xs font-medium text-amber-800 transition-colors disabled:opacity-60 dark:border-amber-800/60 dark:text-amber-300"
+                  className="clay-tile flex flex-1 items-center justify-center gap-1.5 border-amber-300 px-3 py-2.5 text-xs font-medium text-amber-800 transition-colors disabled:opacity-60 sm:flex-none sm:py-1.5 dark:border-amber-800/60 dark:text-amber-300"
                 >
                   {busy === `${h.id}-svg` ? <Loader2 size={13} className="animate-spin" /> : <FileCode size={13} />}
                   SVG
@@ -134,7 +134,7 @@ export default function Collection3DPanel() {
                   type="button"
                   onClick={() => handleExport(h, "stl")}
                   disabled={busy !== null}
-                  className="clay-btn flex items-center gap-1.5 bg-[#d97757] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#c05d3d] disabled:opacity-60"
+                  className="clay-btn flex flex-1 items-center justify-center gap-1.5 bg-[#d97757] px-3 py-2.5 text-xs font-medium text-white transition-colors hover:bg-[#c05d3d] disabled:opacity-60 sm:flex-none sm:py-1.5"
                 >
                   {busy === `${h.id}-stl` ? <Loader2 size={13} className="animate-spin" /> : <Box size={13} />}
                   STL

@@ -123,6 +123,84 @@ function computeMercatorFit(
   return { merc, minX, maxX, minY, maxY, scale, offsetX, offsetY, rotationDeg, pivotX, pivotY };
 }
 
+/**
+ * Rotasi otomatis saat GPX di-upload: pilih sudut yang membuat PUNCAK (titik
+ * elevasi tertinggi) berada di zona atas peta SAMBIL memaksimalkan ukuran
+ * jalur (skala fit terbesar → jalur memanjang mengikuti sumbu panjang kotak
+ * peta, tidak pernah kelihatan kecil).
+ *
+ * Cara kerja: sapu 0–358° (step 2°). Untuk tiap sudut hitung bbox rute yang
+ * sudah dirotasi (math rotasi identik dengan computeMercatorFit) →
+ * skala fit = min(areaW/rw, areaH/rh), dan posisi relatif puncak dari atas
+ * (0 = paling atas). Kandidat valid = puncak di 35% teratas; dari kandidat
+ * valid ambil skala terbesar. Kalau tidak ada yang valid (puncak di tengah
+ * hull rute), pakai sudut yang menempatkan puncak setinggi mungkin.
+ */
+export function autoRotationDeg(size: PosterSize, trackPoints: TrackPoint[]): number {
+  if (trackPoints.length < 2) return 0;
+
+  const merc = trackPoints.map((p) => ({ x: mercatorX(p.lon), y: mercatorY(p.lat) }));
+
+  // Puncak = titik elevasi maksimum (bukan titik terakhir — track bisa PP).
+  let si = 0;
+  for (let i = 1; i < trackPoints.length; i++) {
+    if (trackPoints[i].ele > trackPoints[si].ele) si = i;
+  }
+
+  const { width: areaW, height: areaH } = size.mapAreaMm;
+  const TOP_ZONE = 0.35;
+
+  let bestDeg = 0;
+  let bestScale = -1;
+  let fallbackDeg = 0;
+  let fallbackT = 2;
+
+  for (let deg = 0; deg < 360; deg += 2) {
+    // Sama dengan computeMercatorFit: derajat searah jarum jam di poster =
+    // -deg di ruang mercator (y-up). Pivot tak memengaruhi ukuran bbox
+    // maupun posisi relatif, jadi rotasi di sekitar origin saja.
+    const a = (-deg * Math.PI) / 180;
+    const cos = Math.cos(a);
+    const sin = Math.sin(a);
+
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    let sy = 0;
+    for (let i = 0; i < merc.length; i++) {
+      const m = merc[i];
+      const x = m.x * cos - m.y * sin;
+      const y = m.x * sin + m.y * cos;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      if (i === si) sy = y;
+    }
+
+    const rw = Math.max(maxX - minX, 1e-9);
+    const rh = Math.max(maxY - minY, 1e-9);
+    const scale = Math.min(areaW / rw, areaH / rh);
+    // Poster y-down: atas poster = mercator-y terbesar → t=0 berarti puncak
+    // persis di tepi atas bbox rute.
+    const t = (maxY - sy) / rh;
+
+    if (t <= TOP_ZONE && scale > bestScale) {
+      bestScale = scale;
+      bestDeg = deg;
+    }
+    if (t < fallbackT) {
+      fallbackT = t;
+      fallbackDeg = deg;
+    }
+  }
+
+  const deg = bestScale > 0 ? bestDeg : fallbackDeg;
+  // Slider rotasi di UI memakai rentang -180..180 — normalisasi ke sana.
+  return deg > 180 ? deg - 360 : deg;
+}
+
 export interface ProjectionBBoxMm {
   minX: number;
   minY: number;

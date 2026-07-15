@@ -159,6 +159,20 @@ export interface Export3DSettings {
   registrationMarks: boolean;
 }
 
+/**
+ * Data pengiriman dari pesanan yang diimpor (kode JSON WhatsApp). Dipakai
+ * untuk print resi pengiriman dari /editor tanpa input ulang.
+ */
+export interface ShippingInfo {
+  penerima: string;
+  hp: string;
+  alamat: string;
+  /** Id paket (hemat/premium) dari pesanan. */
+  paket: string;
+  /** Ringkasan isi pesanan untuk resi, mis. "Poster koleksi 3 gunung 20x30 cm". */
+  ringkasan: string;
+}
+
 export interface GpxParseResult {
   points: TrackPoint[];
   distanceKm: number;

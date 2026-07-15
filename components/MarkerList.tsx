@@ -46,7 +46,7 @@ function SortablePosRow({ marker }: { marker: RouteMarker }) {
     >
       <button
         type="button"
-        className="cursor-grab touch-none rounded p-0.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
+        className="cursor-grab touch-none rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600 dark:hover:bg-zinc-800"
         {...attributes}
         {...listeners}
       >
@@ -62,7 +62,7 @@ function SortablePosRow({ marker }: { marker: RouteMarker }) {
       <button
         type="button"
         onClick={() => removeMarker(marker.id)}
-        className="rounded p-0.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40"
+        className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/40"
         aria-label="Hapus pos"
       >
         <Trash2 size={16} />

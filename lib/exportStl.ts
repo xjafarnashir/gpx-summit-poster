@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { STLExporter } from "three/examples/jsm/exporters/STLExporter.js";
 import type { Export3DSettings, PosterSize, RouteMarker, TrackPoint } from "@/types";
-import { buildRouteRibbon, centerlineElevations, markerPinsMm } from "@/lib/routeRibbon";
+import { buildRouteCenterline, centerlineElevations, markerPinsMm } from "@/lib/routeRibbon";
 
 export interface StlExportResult {
   stl: ArrayBuffer;
@@ -34,7 +34,7 @@ export function exportRouteStl(
   settings: Export3DSettings,
   rotationDeg = 0
 ): StlExportResult {
-  const ribbon = buildRouteRibbon(size, trackPoints, settings.lineWidthMm, rotationDeg);
+  const ribbon = buildRouteCenterline(size, trackPoints, settings.lineWidthMm, rotationDeg);
   const bboxMm = ribbon.bboxMm;
 
   // Poster/SVG coordinates are Y-DOWN (print space); STL viewers/slicers are

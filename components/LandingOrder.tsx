@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowUpRight, Check, MessageCircle, Plus, Trash2 } from "lucide-react";
 import { PACKAGES, WA_NUMBER, packageById, type PackageId, type PosterPackage } from "@/lib/landing";
 import { BACKGROUND_THEMES, bgThemeById, type BackgroundThemeId } from "@/lib/backgroundThemes";
+import { ORDER_JSON_LABEL, type OrderPayload, type OrderShipping } from "@/lib/orderPayload";
 
 /* ============================================================================
  * Bagian PESAN di landing page: pilih jenis (1 pendakian / koleksi 2-3 gunung),
@@ -78,6 +79,8 @@ const EMPTY_COLLECTION: CollectionForm = {
   hikes: [emptyHike(), emptyHike()],
 };
 
+const EMPTY_SHIPPING: OrderShipping = { penerima: "", hp: "", alamat: "" };
+
 const num = (s: string): number => {
   const n = parseFloat(s.replace(/[^0-9.,-]/g, "").replace(",", "."));
   return Number.isFinite(n) ? n : 0;
@@ -87,7 +90,23 @@ const num = (s: string): number => {
 
 const waUrl = (text: string) => `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(text)}`;
 
-function buildMsgSingle(pkg: PosterPackage, bgLabel: string, f: SingleForm): string {
+/** Baris alamat pengiriman (dibaca admin) — sama untuk single & koleksi. */
+function shippingLines(s: OrderShipping): string[] {
+  return [
+    "",
+    "Pengiriman ke:",
+    `- Penerima: ${s.penerima.trim()}`,
+    `- No HP: ${s.hp.trim()}`,
+    `- Alamat: ${s.alamat.trim()}`,
+  ];
+}
+
+/** Blok kode pesanan: JSON satu baris yang di-paste admin ke /editor. */
+function orderJsonBlock(payload: OrderPayload): string[] {
+  return ["", ORDER_JSON_LABEL, JSON.stringify(payload)];
+}
+
+function buildMsgSingle(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel: string, f: SingleForm, ship: OrderShipping): string {
   const lines = [
     `Halo! Saya mau pesan *Poster Pendakian 20x30 cm landscape + jalur 3D timbul*.`,
     `Paket: *${pkg.name}* — ${pkg.mount} (${pkg.price})`,
@@ -108,11 +127,32 @@ function buildMsgSingle(pkg: PosterPackage, bgLabel: string, f: SingleForm): str
   add("TikTok", f.tiktok);
   add("Link QR", f.linkQr);
   add("Catatan", f.catatan);
+  lines.push(...shippingLines(ship));
   lines.push("", "File GPX + foto pendakian saya kirim di chat ini ya.");
+  const payload: OrderPayload = {
+    v: 1,
+    jenis: "single",
+    paket: pkg.id,
+    tema: bgId,
+    nama: f.nama.trim(),
+    gunung: f.gunung.trim(),
+    via: f.via.trim(),
+    tanggal: f.tanggal.trim(),
+    mdpl: f.ketinggian.trim(),
+    km: f.jarak.trim(),
+    gain: f.elevGain.trim(),
+    waktu: f.waktu.trim(),
+    ig: f.instagram.trim(),
+    tt: f.tiktok.trim(),
+    qr: f.linkQr.trim(),
+    catatan: f.catatan.trim(),
+    kirim: { penerima: ship.penerima.trim(), hp: ship.hp.trim(), alamat: ship.alamat.trim() },
+  };
+  lines.push(...orderJsonBlock(payload));
   return lines.join("\n");
 }
 
-function buildMsgCollection(pkg: PosterPackage, bgLabel: string, f: CollectionForm): string {
+function buildMsgCollection(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel: string, f: CollectionForm, ship: OrderShipping): string {
   const lines = [
     `Halo! Saya mau pesan *Poster Koleksi Ekspedisi (${f.hikes.length} gunung) 20x30 cm + jalur 3D timbul*.`,
     `Paket: *${pkg.name}* — ${pkg.mount} (${pkg.price})`,
@@ -138,7 +178,32 @@ function buildMsgCollection(pkg: PosterPackage, bgLabel: string, f: CollectionFo
     addH("Elevation gain (m)", h.elevGain);
     addH("Waktu tempuh", h.waktu);
   });
+  lines.push(...shippingLines(ship));
   lines.push("", "File GPX tiap gunung + foto saya kirim di chat ini ya.");
+  const payload: OrderPayload = {
+    v: 1,
+    jenis: "koleksi",
+    paket: pkg.id,
+    tema: bgId,
+    judul: f.judul.trim(),
+    pendaki: f.namaPendaki.trim(),
+    deskripsi: f.deskripsi.trim(),
+    ig: f.instagram.trim(),
+    tt: f.tiktok.trim(),
+    qr: f.linkQr.trim(),
+    catatan: f.catatan.trim(),
+    kirim: { penerima: ship.penerima.trim(), hp: ship.hp.trim(), alamat: ship.alamat.trim() },
+    gunung: f.hikes.map((h) => ({
+      nama: h.gunung.trim(),
+      via: h.via.trim(),
+      tanggal: h.tanggal.trim(),
+      mdpl: h.ketinggian.trim(),
+      km: h.jarak.trim(),
+      gain: h.elevGain.trim(),
+      waktu: h.waktu.trim(),
+    })),
+  };
+  lines.push(...orderJsonBlock(payload));
   return lines.join("\n");
 }
 
@@ -464,6 +529,7 @@ export default function LandingOrder() {
   const [mode, setMode] = useState<Mode>("single");
   const [single, setSingle] = useState<SingleForm>(EMPTY_SINGLE);
   const [collection, setCollection] = useState<CollectionForm>(EMPTY_COLLECTION);
+  const [shipping, setShipping] = useState<OrderShipping>(EMPTY_SHIPPING);
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
   const [bgTheme, setBgTheme] = useState<BackgroundThemeId>("sunset");
   const pkg = pkgId ? packageById(pkgId) : null;
@@ -471,6 +537,7 @@ export default function LandingOrder() {
 
   const patchS = (p: Partial<SingleForm>) => setSingle((f) => ({ ...f, ...p }));
   const patchC = (p: Partial<CollectionForm>) => setCollection((f) => ({ ...f, ...p }));
+  const patchShip = (p: Partial<OrderShipping>) => setShipping((s) => ({ ...s, ...p }));
   const patchHike = (i: number, p: Partial<HikeForm>) =>
     setCollection((f) => ({ ...f, hikes: f.hikes.map((h, j) => (j === i ? { ...h, ...p } : h)) }));
   const addHike = () => setCollection((f) => (f.hikes.length >= 3 ? f : { ...f, hikes: [...f.hikes, emptyHike()] }));
@@ -491,7 +558,11 @@ export default function LandingOrder() {
       document.getElementById("lo-paket")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    setConfirmMsg(mode === "single" ? buildMsgSingle(pkg, bg.label, single) : buildMsgCollection(pkg, bg.label, collection));
+    setConfirmMsg(
+      mode === "single"
+        ? buildMsgSingle(pkg, bgTheme, bg.label, single, shipping)
+        : buildMsgCollection(pkg, bgTheme, bg.label, collection, shipping)
+    );
   };
 
   return (
@@ -627,6 +698,28 @@ export default function LandingOrder() {
               </label>
             </>
           )}
+
+          {/* alamat pengiriman — wajib, dipakai admin untuk kirim & print resi */}
+          <div className="clay-well p-4">
+            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              Alamat pengiriman <span className="text-[#c05d3d]">*</span>
+            </span>
+            <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Nama penerima" required placeholder="Nama sesuai alamat" value={shipping.penerima} onChange={(e) => patchShip({ penerima: e.target.value })} />
+              <Field label="No HP / WA" required inputMode="tel" placeholder="08xxxxxxxxxx" value={shipping.hp} onChange={(e) => patchShip({ hp: e.target.value })} />
+            </div>
+            <label className={`${labelClass} mt-3`}>
+              Alamat lengkap
+              <textarea
+                required
+                rows={2}
+                className={inputClass}
+                placeholder="Jalan, RT/RW, kelurahan, kecamatan, kota, provinsi, kode pos"
+                value={shipping.alamat}
+                onChange={(e) => patchShip({ alamat: e.target.value })}
+              />
+            </label>
+          </div>
 
           <div className="clay-well flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
             <span className="text-zinc-600 dark:text-zinc-300">

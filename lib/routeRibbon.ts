@@ -139,6 +139,47 @@ export function buildRouteRibbon(
   };
 }
 
+/**
+ * Lightweight centerline + footprint for the STL export. Same projection,
+ * dedupe, and mm-space as buildRouteRibbon, but WITHOUT the polyclip boolean
+ * union. The STL is built from watertight per-segment primitives off the
+ * centerline (see lib/exportStl.ts), so it never needs the 2D union outline —
+ * and that union is O(n^2)+ on dense self-crossing routes (a 400-pt switchback
+ * measured ~65s), which showed up as the STL export "hanging". bbox is the
+ * centerline extent expanded by half the line width = the ribbon's true XY
+ * footprint.
+ */
+export function buildRouteCenterline(
+  size: PosterSize,
+  trackPoints: TrackPoint[],
+  lineWidthMm: number,
+  rotationDeg = 0
+): { centerline: Pt[]; bboxMm: RibbonResult["bboxMm"] } {
+  const proj = projectRoute(size, trackPoints, { rotationDeg });
+  const centerline = dedupe(proj.points);
+  const zero = { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
+
+  if (centerline.length < 2) return { centerline, bboxMm: zero };
+
+  const half = Math.max(lineWidthMm / 2, 0.05);
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of centerline) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  minX -= half;
+  minY -= half;
+  maxX += half;
+  maxY += half;
+
+  return { centerline, bboxMm: { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY } };
+}
+
 export interface MarkerPinMm {
   type: RouteMarker["type"];
   x: number;

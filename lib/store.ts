@@ -10,11 +10,13 @@ import type {
   PosterPresetId,
   PosterSize,
   RouteMarker,
+  ShippingInfo,
   SummitStats,
   ThemeSettings,
   TrackPoint,
 } from "@/types";
-import { computePosterSize } from "./projection";
+import { autoRotationDeg, computePosterSize } from "./projection";
+import { collectionBlockSize } from "./exportCollectionPng";
 import { DEFAULT_PHOTO_TRANSFORM } from "./photoTransform";
 
 export const POSTER_PRESETS_MM: Record<Exclude<PosterPresetId, "custom">, { width: number; height: number }> = {
@@ -149,6 +151,8 @@ interface AppState {
   export3d: Export3DSettings;
   posterMode: PosterMode;
   collection: CollectionData;
+  /** Data pengiriman dari pesanan yang diimpor — bahan print resi. */
+  shipping: ShippingInfo | null;
   hasHydrated: boolean;
   storageWarning: string | null;
 
@@ -168,6 +172,9 @@ interface AppState {
     patch: Partial<Pick<CollectionData, "expeditionTitle" | "expeditionDesc" | "climberName" | "instagram" | "tiktok" | "qrCodeUrl" | "backgroundTheme">>
   ) => void;
   addHike: () => void;
+  /** Ganti seluruh daftar pendakian sekaligus (dipakai impor pesanan JSON). */
+  setCollectionHikes: (hikes: CollectionHike[]) => void;
+  setShipping: (shipping: ShippingInfo | null) => void;
   updateHike: (id: string, patch: Partial<CollectionHike>) => void;
   removeHike: (id: string) => void;
   setHikeGpx: (id: string, fileName: string, data: GpxParseResult) => void;
@@ -268,6 +275,7 @@ export const useAppStore = create<AppState>()(
       export3d: DEFAULT_EXPORT_3D,
       posterMode: "single",
       collection: DEFAULT_COLLECTION,
+      shipping: null,
       storageWarning: null,
       hasHydrated: false,
 
@@ -299,6 +307,9 @@ export const useAppStore = create<AppState>()(
             elevationGainM: Math.round(data.elevationGainM),
             summitElevationM: Math.round(data.maxEle),
           },
+          // Auto-orientasi: puncak di atas + jalur sebesar mungkin. Tetap bisa
+          // di-override manual lewat slider "Rotasi peta".
+          theme: { ...get().theme, mapRotationDeg: autoRotationDeg(get().posterSize, data.points) },
         });
       },
 
@@ -339,6 +350,14 @@ export const useAppStore = create<AppState>()(
         set({ collection: { ...get().collection, hikes: [...hikes, makeEmptyHike()] } });
       },
 
+      setCollectionHikes: (hikes) => {
+        const padded = [...hikes.slice(0, MAX_COLLECTION_HIKES)];
+        while (padded.length < MIN_COLLECTION_HIKES) padded.push(makeEmptyHike());
+        set({ collection: { ...get().collection, hikes: padded } });
+      },
+
+      setShipping: (shipping) => set({ shipping }),
+
       updateHike: (id, patch) =>
         set({
           collection: {
@@ -353,11 +372,17 @@ export const useAppStore = create<AppState>()(
         set({ collection: { ...get().collection, hikes: hikes.filter((h) => h.id !== id) } });
       },
 
-      setHikeGpx: (id, fileName, data) =>
+      setHikeGpx: (id, fileName, data) => {
+        const { collection, posterSize } = get();
+        const index = collection.hikes.findIndex((h) => h.id === id);
+        // Auto-orientasi per blok: pakai kotak peta blok ini (sumber geometri
+        // yang sama dengan renderer poster koleksi) supaya fit-nya presisi.
+        const blockSize = collectionBlockSize(posterSize, collection.hikes.length, Math.max(index, 0));
+        const rotation = autoRotationDeg(blockSize, data.points);
         set({
           collection: {
-            ...get().collection,
-            hikes: get().collection.hikes.map((h) =>
+            ...collection,
+            hikes: collection.hikes.map((h) =>
               h.id === id
                 ? {
                     ...h,
@@ -366,11 +391,13 @@ export const useAppStore = create<AppState>()(
                     distanceKm: Math.round(data.distanceKm * 100) / 100,
                     elevationGainM: Math.round(data.elevationGainM),
                     summitElevationM: Math.round(data.maxEle),
+                    mapRotationDeg: rotation,
                   }
                 : h
             ),
           },
-        }),
+        });
+      },
 
       reset: () =>
         set({
@@ -384,6 +411,7 @@ export const useAppStore = create<AppState>()(
           export3d: DEFAULT_EXPORT_3D,
           posterMode: "single",
           collection: { ...DEFAULT_COLLECTION, hikes: [makeEmptyHike(), makeEmptyHike()] },
+          shipping: null,
         }),
       };
     },
@@ -400,6 +428,7 @@ export const useAppStore = create<AppState>()(
         export3d: state.export3d,
         posterMode: state.posterMode,
         collection: state.collection,
+        shipping: state.shipping,
       }),
       // Backfill defaults so state persisted by an older version always has every
       // field defined (prevents React controlled/uncontrolled input warnings when

@@ -6,7 +6,9 @@ import { ChevronLeft, RotateCcw, Sparkles, TriangleAlert, X } from "lucide-react
 import AppHeader from "@/components/AppHeader";
 import CollectionCanvas from "@/components/CollectionCanvas";
 import CollectionEditor from "@/components/CollectionEditor";
+import ExportPngButton from "@/components/ExportPngButton";
 import GpxUpload from "@/components/GpxUpload";
+import ImportOrderPanel from "@/components/ImportOrderPanel";
 import MapEditor from "@/components/MapEditor";
 import MarkerList from "@/components/MarkerList";
 import ThemeSelector from "@/components/ThemeSelector";
@@ -68,44 +70,41 @@ export default function EditorPage() {
   return (
     <div className="flex min-h-screen flex-col lg:h-screen lg:overflow-hidden">
       <AppHeader
+        wide
         actions={
           <>
+            <Link
+              href="/"
+              title="Ubah ukuran poster"
+              className="clay-chip flex items-center gap-1 px-3 py-2 text-xs text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100 sm:px-3.5 sm:text-sm"
+            >
+              <ChevronLeft size={13} />
+              <span className="hidden sm:inline">Ubah ukuran</span>
+            </Link>
+            <ImportOrderPanel />
             <button
               type="button"
               onClick={handleFillSample}
-              className="clay-btn flex items-center gap-1.5 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-3 py-1.5 text-xs font-medium text-white transition-all hover:-translate-y-0.5 sm:px-3.5 sm:text-sm"
+              title="Isi contoh data"
+              className="clay-chip flex items-center gap-1.5 px-3 py-2 text-xs text-zinc-600 transition-colors hover:text-[#9c4a2c] dark:text-zinc-300 dark:hover:text-[#e59a7c] sm:px-3.5 sm:text-sm"
             >
               <Sparkles size={13} />
               <span className="hidden sm:inline">Isi Contoh Data</span>
-              <span className="sm:hidden">Contoh</span>
             </button>
+            <ExportPngButton />
             <button
               type="button"
               onClick={handleReset}
-              className="clay-chip flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-600 transition-colors hover:text-red-600 dark:text-zinc-300 dark:hover:text-red-400 sm:px-3.5 sm:text-sm"
+              title="Reset semua data"
+              className="clay-chip flex items-center gap-1.5 px-3 py-2 text-xs text-zinc-600 transition-colors hover:text-red-600 dark:text-zinc-300 dark:hover:text-red-400 sm:px-3.5 sm:text-sm"
             >
               <RotateCcw size={13} />
-              Reset
+              <span className="hidden sm:inline">Reset</span>
             </button>
           </>
         }
       />
-      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 py-6 lg:min-h-0 lg:overflow-hidden">
-        <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <Link
-              href="/"
-              className="flex items-center gap-1 text-sm text-zinc-500 transition-colors hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-            >
-              <ChevronLeft size={14} />
-              Ubah ukuran
-            </Link>
-            <h1 className="mt-1 text-xl font-extrabold tracking-tight text-[#3d3929] sm:text-2xl dark:text-[#f0eee4]">
-              {posterMode === "collection" ? "Editor Poster Koleksi" : "Editor Poster"}
-            </h1>
-          </div>
-        </header>
-
+      <div className="flex w-full flex-1 flex-col px-4 py-4 lg:min-h-0 lg:overflow-hidden xl:px-8">
         {storageWarning && (
           <div className="mb-6 flex items-start gap-2 rounded-lg border border-amber-400/40 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-300">
             <TriangleAlert size={16} className="mt-0.5 shrink-0" />
@@ -122,18 +121,24 @@ export default function EditorPage() {
         )}
 
         {posterMode === "collection" ? (
-          <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:pr-1">
-            <CollectionCanvas />
-            <CollectionEditor />
+          /* Preview KIRI tanpa scroll (poster selalu utuh), input KANAN. */
+          <div className="grid grid-cols-1 gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_420px] lg:overflow-hidden">
+            <div className="flex flex-col lg:min-h-0 lg:overflow-hidden">
+              <CollectionCanvas />
+            </div>
+            <div className="flex flex-col gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+              <CollectionEditor />
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[1fr_360px] lg:overflow-hidden">
-            <div className="flex flex-col gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
-              <MapEditor />
+          /* Preview KIRI tanpa scroll; peta editor ikut kolom input di kanan. */
+          <div className="grid grid-cols-1 gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_420px] lg:overflow-hidden">
+            <div className="flex flex-col lg:min-h-0 lg:overflow-hidden">
               <PosterCanvas />
             </div>
             <div className="flex flex-col gap-6 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
               <GpxUpload />
+              <MapEditor />
               <MarkerList />
               <ThemeSelector />
               <StatCardForm />
