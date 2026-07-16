@@ -107,7 +107,7 @@ export default function ImportOrderPanel() {
     const now = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Resi — ${esc(shipping.penerima)}</title>
 <style>
-  @page { size: A6; margin: 7mm; }
+  @page { size: 100mm 150mm; margin: 7mm; }
   * { box-sizing: border-box; }
   body { font-family: system-ui, -apple-system, sans-serif; margin: 0; color: #1a1a1a; font-size: 11px; line-height: 1.45; }
   .frame { border: 1.6px solid #1a1a1a; border-radius: 6px; padding: 10px 12px; }
@@ -142,7 +142,7 @@ export default function ImportOrderPanel() {
 </div>
 <script>window.onload = function(){ window.print(); };</script>
 </body></html>`;
-    const w = window.open("", "_blank", "width=460,height=640");
+    const w = window.open("", "_blank", "width=440,height=660");
     if (!w) {
       alert("Popup diblokir browser — izinkan popup untuk print resi.");
       return;

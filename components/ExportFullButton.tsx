@@ -7,7 +7,7 @@ import { useAppStore } from "@/lib/store";
 import { renderPoster } from "@/lib/exportPng";
 import { collectionBlockSize, renderCollectionPoster } from "@/lib/exportCollectionPng";
 import { exportRouteStl } from "@/lib/exportStl";
-import { exportRouteSvg } from "@/lib/exportSvg";
+import { renderResiCanvas } from "@/lib/exportResiPng";
 import type { CollectionHike, RouteMarker } from "@/types";
 
 /**
@@ -15,9 +15,14 @@ import type { CollectionHike, RouteMarker } from "@/types";
  * SEMUA hasil produksi:
  *   - poster PNG kualitas cetak (dpi penuh)
  *   - STL jalur 3D 1:1 (satu file per gunung di mode koleksi)
- *   - SVG jalur 1:1 (cadangan penyelaras / pemotongan)
+ *   - resi pengiriman PNG 10x15 cm (bila pesanan sudah diimpor)
  * Memakai setelan Export 3D yang sama dengan panelnya (lebar garis, tinggi
  * extrude, dst), jadi hasilnya identik dengan export satu-satu.
+ *
+ * SVG sengaja TIDAK dibundel: pembuatannya lewat boolean union polyclip yang
+ * O(n^2) — ~11 dtk untuk jalur rapat hasil generator (1200+ titik), sementara
+ * sisa bundel cuma ~2 dtk. SVG tetap tersedia lewat tombol "Export SVG" di
+ * panel Export 3D bila sewaktu-waktu dibutuhkan.
  */
 export default function ExportFullButton() {
   const [busy, setBusy] = useState(false);
@@ -30,6 +35,7 @@ export default function ExportFullButton() {
   const theme = useAppStore((s) => s.theme);
   const collection = useAppStore((s) => s.collection);
   const export3d = useAppStore((s) => s.export3d);
+  const shipping = useAppStore((s) => s.shipping);
 
   const hikesWithGpx = collection.hikes.filter((h) => h.gpxData && h.gpxData.points.length >= 2);
   const disabled = busy || (posterMode === "single" ? !gpxData : hikesWithGpx.length === 0);
@@ -72,8 +78,6 @@ export default function ExportFullButton() {
         zip.file(`poster-${base}.png`, await canvasToPngBlob(canvas));
         const stl = exportRouteStl(posterSize, gpxData.points, markers, export3d, theme.mapRotationDeg);
         zip.file(`rute-${base}.stl`, stl.stl);
-        const svg = exportRouteSvg(posterSize, gpxData.points, markers, export3d, theme.mapRotationDeg);
-        zip.file(`rute-${base}.svg`, svg.svg);
         zipName = `poster-${base}-full.zip`;
       } else {
         const base = slug(collection.expeditionTitle, "ekspedisi");
@@ -86,10 +90,14 @@ export default function ExportFullButton() {
           const hikeBase = slug(h.mountainName, `gunung-${index + 1}`);
           const stl = exportRouteStl(blockSize, h.gpxData!.points, syntheticMarkers(h), export3d, rot);
           zip.file(`rute-${hikeBase}.stl`, stl.stl);
-          const svg = exportRouteSvg(blockSize, h.gpxData!.points, syntheticMarkers(h), export3d, rot);
-          zip.file(`rute-${hikeBase}.svg`, svg.svg);
         }
         zipName = `poster-koleksi-${base}-full.zip`;
+      }
+
+      // Resi pengiriman (10x15 cm) — hanya ada bila pesanan sudah diimpor.
+      if (shipping) {
+        const resiBase = slug(shipping.penerima, "penerima");
+        zip.file(`resi-${resiBase}.png`, await canvasToPngBlob(renderResiCanvas(shipping)));
       }
 
       const blob = await zip.generateAsync({ type: "blob" });
@@ -113,7 +121,7 @@ export default function ExportFullButton() {
       type="button"
       onClick={handleExport}
       disabled={disabled}
-      title="Export Full — ZIP berisi PNG + STL + SVG"
+      title="Export Full — ZIP berisi PNG + STL + resi"
       className="clay-btn flex items-center gap-1.5 bg-gradient-to-r from-[#b8532f] to-[#8f3d20] px-3 py-2 text-xs font-medium text-white transition-all hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-60 sm:px-3.5 sm:text-sm"
     >
       {busy ? <Loader2 size={13} className="animate-spin" /> : <FolderDown size={13} />}
