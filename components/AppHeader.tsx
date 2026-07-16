@@ -12,19 +12,19 @@ export default function AppHeader({ actions, wide }: { actions?: React.ReactNode
   return (
     <header className="sticky top-0 z-40 px-4 pt-3 pb-1 xl:px-8">
       <div
-        className={`clay-card mx-auto flex h-14 items-center justify-between gap-3 !rounded-full px-4 ${
+        className={`clay-card mx-auto flex h-14 items-center gap-3 !rounded-full px-4 ${
           wide ? "max-w-none" : "max-w-6xl"
         }`}
       >
-        <Link href="/" className="flex min-w-0 items-center gap-2.5">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#d97757] to-[#b8532f] text-white shadow-[0_6px_12px_-4px_var(--clay-drop),inset_0_2px_3px_rgba(255,255,255,0.5),inset_0_-3px_5px_rgba(0,0,0,0.25)]">
             <Mountain size={16} />
           </span>
-          <span className="truncate text-sm font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <span className="hidden truncate text-sm font-bold tracking-tight text-zinc-900 sm:inline dark:text-zinc-50">
             GPX Summit Poster
           </span>
         </Link>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="navbar-actions flex min-w-0 flex-1 items-center justify-end gap-2">
           {actions}
           <ThemeToggle />
         </div>

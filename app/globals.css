@@ -479,6 +479,16 @@ input:focus-visible {
   }
 }
 
+/* Navbar action row: scrolls internally on narrow screens instead of
+   pushing the pill (and the whole page) wider than the viewport. */
+.navbar-actions {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.navbar-actions::-webkit-scrollbar {
+  display: none;
+}
+
 /* Slightly nicer scrollbars on WebKit/Blink; harmless no-op elsewhere. */
 ::-webkit-scrollbar {
   width: 10px;

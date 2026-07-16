@@ -1,14 +1,16 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { UploadCloud } from "lucide-react";
+import { Route, UploadCloud } from "lucide-react";
 import { parseGpxFile } from "@/lib/gpxParser";
 import { useAppStore } from "@/lib/store";
+import RouteBuilderModal from "@/components/RouteBuilderModal";
 
 export default function GpxUpload() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const gpxFileName = useAppStore((s) => s.gpxFileName);
@@ -80,6 +82,27 @@ export default function GpxUpload() {
           {loading ? "Memproses..." : "Klik atau drag & drop file .gpx di sini"}
         </p>
       </div>
+
+      <div className="mt-3 flex items-center gap-3">
+        <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
+        <span className="text-xs text-zinc-400">atau</span>
+        <span className="h-px flex-1 bg-zinc-200 dark:bg-zinc-700" />
+      </div>
+      <button
+        type="button"
+        onClick={() => setBuilderOpen(true)}
+        className="clay-tile mt-3 flex w-full items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium text-[#9c4a2c] transition-colors hover:text-[#7d3a22] dark:text-[#e59a7c] dark:hover:text-[#f0b79f]"
+      >
+        <Route size={16} />
+        Buat jalur tanpa GPX (pilih di peta)
+      </button>
+
+      {builderOpen && (
+        <RouteBuilderModal
+          onGenerated={(fileName, result) => setGpxData(fileName, result)}
+          onClose={() => setBuilderOpen(false)}
+        />
+      )}
 
       {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
 

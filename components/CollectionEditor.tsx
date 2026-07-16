@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Mountain, Plus, Trash2, UploadCloud } from "lucide-react";
+import { Mountain, Plus, Route, Trash2, UploadCloud } from "lucide-react";
 import { useAppStore, MAX_COLLECTION_HIKES, MIN_COLLECTION_HIKES } from "@/lib/store";
 import { parseGpxFile } from "@/lib/gpxParser";
+import RouteBuilderModal from "@/components/RouteBuilderModal";
 import { compressImageToDataUrl } from "@/lib/image";
 import { DEFAULT_PHOTO_TRANSFORM } from "@/lib/photoTransform";
 import PhotoCropper from "@/components/PhotoCropper";
@@ -22,6 +23,7 @@ function HikeGpxUpload({ hike }: { hike: CollectionHike }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [builderOpen, setBuilderOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
@@ -77,6 +79,20 @@ function HikeGpxUpload({ hike }: { hike: CollectionHike }) {
           {loading ? "Memproses..." : hike.gpxFileName ? `Ganti GPX (${hike.gpxFileName})` : "Klik / drop file .gpx"}
         </p>
       </div>
+      <button
+        type="button"
+        onClick={() => setBuilderOpen(true)}
+        className="clay-tile mt-2 flex w-full items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-[#9c4a2c] transition-colors hover:text-[#7d3a22] dark:text-[#e59a7c] dark:hover:text-[#f0b79f]"
+      >
+        <Route size={13} />
+        Buat jalur tanpa GPX
+      </button>
+      {builderOpen && (
+        <RouteBuilderModal
+          onGenerated={(fileName, result) => setHikeGpx(hike.id, fileName, result)}
+          onClose={() => setBuilderOpen(false)}
+        />
+      )}
       {error && <p className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p>}
       {hike.gpxData && !error && (
         <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
