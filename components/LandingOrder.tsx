@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { ArrowUpRight, Check, MessageCircle, Plus, Trash2 } from "lucide-react";
-import { PACKAGES, WA_NUMBER, packageById, type PackageId, type PosterPackage } from "@/lib/landing";
+import { WA_NUMBER, type PackageId, type PosterPackage } from "@/lib/landing";
+import { applyPricing } from "@/lib/pricing";
+import { usePricing } from "@/lib/usePricing";
 import { BACKGROUND_THEMES, bgThemeById, type BackgroundThemeId } from "@/lib/backgroundThemes";
 import { ORDER_JSON_LABEL, type OrderPayload, type OrderShipping } from "@/lib/orderPayload";
 
@@ -480,7 +482,17 @@ function Field({ label, opt, ...props }: { label: string; opt?: boolean } & Reac
   );
 }
 
-function PackageSelector({ pkgId, onPick, error }: { pkgId: PackageId | null; onPick: (id: PackageId) => void; error: boolean }) {
+function PackageSelector({
+  packages,
+  pkgId,
+  onPick,
+  error,
+}: {
+  packages: PosterPackage[];
+  pkgId: PackageId | null;
+  onPick: (id: PackageId) => void;
+  error: boolean;
+}) {
   return (
     <div id="lo-paket" className="scroll-mt-24">
       <div className="flex items-center justify-between">
@@ -490,7 +502,7 @@ function PackageSelector({ pkgId, onPick, error }: { pkgId: PackageId | null; on
         {error && <span className="text-xs font-medium text-red-500">Pilih dulu paketnya ya</span>}
       </div>
       <div className={`mt-2 grid grid-cols-1 gap-3 rounded-2xl ${error ? "ring-2 ring-red-400/70" : ""}`}>
-        {PACKAGES.map((p) => {
+        {packages.map((p) => {
           const active = pkgId === p.id;
           return (
             <button
@@ -512,7 +524,14 @@ function PackageSelector({ pkgId, onPick, error }: { pkgId: PackageId | null; on
                 </span>
                 <span className="text-sm font-bold text-zinc-900 dark:text-zinc-50">{p.name}</span>
               </div>
-              <div className="mt-1.5 text-lg font-extrabold text-[#b8532f] dark:text-[#e59a7c]">{p.price}</div>
+              <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2">
+                {p.strike && (
+                  <span className="text-sm font-semibold text-zinc-400 line-through decoration-[#c05d3d]/70 dark:text-zinc-500">
+                    {p.strike}
+                  </span>
+                )}
+                <span className="text-lg font-extrabold text-[#b8532f] dark:text-[#e59a7c]">{p.price}</span>
+              </div>
               <div className="mt-0.5 text-xs font-medium text-zinc-600 dark:text-zinc-300">{p.mount}</div>
               <div className="text-xs text-zinc-400 dark:text-zinc-500">{p.tagline}</div>
             </button>
@@ -532,7 +551,10 @@ export default function LandingOrder() {
   const [shipping, setShipping] = useState<OrderShipping>(EMPTY_SHIPPING);
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
   const [bgTheme, setBgTheme] = useState<BackgroundThemeId>("sunset");
-  const pkg = pkgId ? packageById(pkgId) : null;
+  // Harga terkini dari server (bisa disetel admin di /editor).
+  const pricing = usePricing();
+  const packages = applyPricing(pricing);
+  const pkg = pkgId ? (packages.find((p) => p.id === pkgId) ?? null) : null;
   const bg = bgThemeById(bgTheme);
 
   const patchS = (p: Partial<SingleForm>) => setSingle((f) => ({ ...f, ...p }));
@@ -627,7 +649,7 @@ export default function LandingOrder() {
 
           {/* pilih paket — di bawah preview, wajib */}
           <div className="mt-5">
-            <PackageSelector pkgId={pkgId} onPick={pickPkg} error={pkgError} />
+            <PackageSelector packages={packages} pkgId={pkgId} onPick={pickPkg} error={pkgError} />
           </div>
         </div>
 
@@ -726,6 +748,11 @@ export default function LandingOrder() {
               {pkg ? pkg.name : "Belum pilih paket"} · {mode === "single" ? "1 pendakian" : `koleksi ${collection.hikes.length} gunung`} · <strong className="font-semibold">20x30 cm</strong>
             </span>
             <span className="flex items-baseline gap-2">
+              {pkg?.strike && (
+                <span className="text-xs font-semibold text-zinc-400 line-through decoration-[#c05d3d]/70 dark:text-zinc-500">
+                  {pkg.strike}
+                </span>
+              )}
               <strong className="text-base font-bold text-[#b8532f] dark:text-[#e59a7c]">{pkg ? pkg.price : "—"}</strong>
               {mode === "collection" && <span className="text-xs text-zinc-400">total dikonfirmasi admin</span>}
             </span>

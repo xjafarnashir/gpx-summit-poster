@@ -19,12 +19,15 @@ export async function proxy(req: NextRequest) {
 
   const { pathname } = req.nextUrl;
 
-  // Route publik: landing page, halaman login admin, dan endpoint login.
+  // Route publik: landing page, halaman login admin, endpoint login, dan
+  // harga paket (GET publik untuk customer; POST-nya dijaga cookie admin di
+  // handler-nya sendiri).
   if (
     pathname === "/landingpage" ||
     pathname.startsWith("/landingpage/") ||
     pathname === "/admin" ||
-    pathname === "/api/login"
+    pathname === "/api/login" ||
+    pathname === "/api/pricing"
   ) {
     return NextResponse.next();
   }

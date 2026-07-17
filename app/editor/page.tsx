@@ -13,9 +13,11 @@ import GpxUpload from "@/components/GpxUpload";
 import ImportOrderPanel from "@/components/ImportOrderPanel";
 import MapEditor from "@/components/MapEditor";
 import MarkerList from "@/components/MarkerList";
+import NavMore from "@/components/NavMore";
 import ThemeSelector from "@/components/ThemeSelector";
 import StatCardForm from "@/components/StatCardForm";
 import PosterCanvas from "@/components/PosterCanvas";
+import PricingSettings from "@/components/PricingSettings";
 import Export3DPanel from "@/components/Export3DPanel";
 import { useAppStore } from "@/lib/store";
 import { SAMPLE_POS_MARKERS, buildSampleStats } from "@/lib/sampleData";
@@ -75,36 +77,40 @@ export default function EditorPage() {
         wide
         actions={
           <>
-            <Link
-              href="/"
-              title="Ubah ukuran poster"
-              className="clay-chip flex items-center gap-1 px-3 py-2 text-xs text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100 sm:px-3.5 sm:text-sm"
-            >
-              <ChevronLeft size={13} />
-              <span className="hidden sm:inline">Ubah ukuran</span>
-            </Link>
+            {/* Aksi harian tetap di bar; sisanya masuk menu ⋮ agar muat di HP. */}
             <ImportOrderPanel />
-            <button
-              type="button"
-              onClick={handleFillSample}
-              title="Isi contoh data"
-              className="clay-chip flex items-center gap-1.5 px-3 py-2 text-xs text-zinc-600 transition-colors hover:text-[#9c4a2c] dark:text-zinc-300 dark:hover:text-[#e59a7c] sm:px-3.5 sm:text-sm"
-            >
-              <Sparkles size={13} />
-              <span className="hidden sm:inline">Isi Contoh Data</span>
-            </button>
             <ExportPreviewButton />
-            <ExportPngButton />
             <ExportFullButton />
-            <button
-              type="button"
-              onClick={handleReset}
-              title="Reset semua data"
-              className="clay-chip flex items-center gap-1.5 px-3 py-2 text-xs text-zinc-600 transition-colors hover:text-red-600 dark:text-zinc-300 dark:hover:text-red-400 sm:px-3.5 sm:text-sm"
-            >
-              <RotateCcw size={13} />
-              <span className="hidden sm:inline">Reset</span>
-            </button>
+            <NavMore>
+              <Link
+                href="/"
+                title="Ubah ukuran poster"
+                className="clay-chip flex items-center gap-1.5 px-3 py-2 text-xs text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100 sm:text-sm"
+              >
+                <ChevronLeft size={13} />
+                <span className="hidden sm:inline">Ubah ukuran</span>
+              </Link>
+              <PricingSettings />
+              <button
+                type="button"
+                onClick={handleFillSample}
+                title="Isi contoh data"
+                className="clay-chip flex items-center gap-1.5 px-3 py-2 text-xs text-zinc-600 transition-colors hover:text-[#9c4a2c] dark:text-zinc-300 dark:hover:text-[#e59a7c] sm:text-sm"
+              >
+                <Sparkles size={13} />
+                <span className="hidden sm:inline">Isi Contoh Data</span>
+              </button>
+              <ExportPngButton />
+              <button
+                type="button"
+                onClick={handleReset}
+                title="Reset semua data"
+                className="clay-chip flex items-center gap-1.5 px-3 py-2 text-xs text-zinc-600 transition-colors hover:text-red-600 dark:text-zinc-300 dark:hover:text-red-400 sm:text-sm"
+              >
+                <RotateCcw size={13} />
+                <span className="hidden sm:inline">Reset</span>
+              </button>
+            </NavMore>
           </>
         }
       />

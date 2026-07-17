@@ -13,6 +13,8 @@ export interface PosterPackage {
   id: PackageId;
   name: string;
   price: string;
+  /** Harga coret (awal, sebelum promo) — diisi applyPricing bila disetel. */
+  strike?: string;
   /** Media/mounting fisik. */
   mount: string;
   tagline: string;

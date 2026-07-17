@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { ArrowRight, Check, MessageCircle, Mountain } from "lucide-react";
 import ThemeToggle from "@/components/ThemeToggle";
-import { PACKAGES, WA_NUMBER } from "@/lib/landing";
+import { WA_NUMBER } from "@/lib/landing";
+import { applyPricing, formatRupiah } from "@/lib/pricing";
+import { readPricing } from "@/lib/pricingStore.server";
+
+/* Harga bisa diubah admin dari /editor — render per request agar selalu segar. */
+export const dynamic = "force-dynamic";
 
 /* ============================================================================
  * Landing page jualan (etalase) — poster pendakian custom 20×30 cm dari GPX.
@@ -10,7 +15,6 @@ import { PACKAGES, WA_NUMBER } from "@/lib/landing";
  * ========================================================================== */
 
 const PESAN_HREF = "/landingpage/pesan";
-const HEMAT = PACKAGES.find((p) => p.id === "hemat")!;
 
 /* ---- Visual mini per item "Yang tercetak" ---- */
 
@@ -130,7 +134,12 @@ const POSTER_CONTENTS: { n: string; title: string; desc: string; visual: React.R
   },
 ];
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const pricing = await readPricing();
+  const packages = applyPricing(pricing);
+  const hematPrice = formatRupiah(pricing.hemat);
+  const hematStrike = pricing.hematStrike > 0 ? formatRupiah(pricing.hematStrike) : null;
+
   return (
     <div className="min-h-screen overflow-x-clip">
       {/* ---- header ---- */}
@@ -179,8 +188,13 @@ export default function LandingPage() {
 
             <div className="t3d-in t3d-in-4 mt-7 flex flex-wrap items-end gap-x-3 gap-y-2">
               <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Mulai</span>
+              {hematStrike && (
+                <span className="mb-1 text-lg font-semibold text-zinc-400 line-through decoration-[#c05d3d]/70 decoration-2 dark:text-zinc-500">
+                  {hematStrike}
+                </span>
+              )}
               <span className="t3d-text text-4xl font-extrabold tracking-tight text-[#b8532f] dark:text-[#e59a7c]">
-                {HEMAT.price}
+                {hematPrice}
               </span>
               <span className="clay-chip mb-1 px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-widest text-[#9c4a2c] dark:text-[#e59a7c]">
                 2 pilihan paket
@@ -285,7 +299,7 @@ export default function LandingPage() {
             di media pajang — pilih yang paling pas buat dindingmu.
           </p>
           <div className="mt-8 grid grid-cols-1 gap-7 sm:grid-cols-2">
-            {PACKAGES.map((p, i) => (
+            {packages.map((p, i) => (
               <div key={p.id} className="t3d-reveal flex">
               <div className={`t3d-card ${i % 2 === 1 ? "t3d-card-r" : ""} flex w-full flex-col p-6 sm:p-7`}>
                 <div className="flex items-center justify-between">
@@ -294,7 +308,12 @@ export default function LandingPage() {
                     {p.badge}
                   </span>
                 </div>
-                <div className="mt-3 flex items-baseline gap-2">
+                <div className="mt-3 flex flex-wrap items-baseline gap-x-2">
+                  {p.strike && (
+                    <span className="text-base font-semibold text-zinc-400 line-through decoration-[#c05d3d]/70 decoration-2 dark:text-zinc-500">
+                      {p.strike}
+                    </span>
+                  )}
                   <span className="t3d-text text-3xl font-extrabold tracking-tight text-[#b8532f] dark:text-[#e59a7c]">{p.price}</span>
                   <span className="text-sm text-zinc-400">/ poster</span>
                 </div>
