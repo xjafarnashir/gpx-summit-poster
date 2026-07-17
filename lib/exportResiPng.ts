@@ -12,8 +12,30 @@ export const RESI_WIDTH_MM = 100;
 export const RESI_HEIGHT_MM = 150;
 const RESI_DPI = 300;
 
+/**
+ * Rincian isi poster untuk resi — diambil dari data editor yang sedang
+ * dikerjakan (bukan dari payload pesanan), supaya selalu cocok dengan poster
+ * yang benar-benar dikirim meski nama sempat dikoreksi admin.
+ */
+export interface ResiDetail {
+  pendaki?: string;
+  gunung?: string[];
+}
+
 /** Nomor WA admin dalam format lokal (0…) — sama dengan footer landing page. */
 export const ADMIN_WA_LOCAL = WA_NUMBER.replace(/^62/, "0");
+
+/**
+ * Daftar gunung untuk baris "Gunung: …". Nama di editor lazimnya sudah memuat
+ * kata "Gunung" (mis. "Gunung Sindoro"), yang jadi dobel dengan labelnya dan
+ * bikin barisnya melipat — jadi prefiks itu dibuang di resi.
+ */
+export function formatGunungList(names: string[]): string {
+  return names
+    .map((g) => g.trim().replace(/^gunung\s+/i, ""))
+    .filter(Boolean)
+    .join(" · ");
+}
 
 const INK = "#1a1a1a";
 const MUTED = "#6b6b6b";
@@ -50,7 +72,7 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
  * Render resi ke kanvas 100x150 mm @300 DPI. Memuat penerima, no HP, alamat,
  * isi paket, serta identitas pengirim (myKoordinat + WA admin).
  */
-export function renderResiCanvas(shipping: ShippingInfo): HTMLCanvasElement {
+export function renderResiCanvas(shipping: ShippingInfo, detail?: ResiDetail): HTMLCanvasElement {
   const pxPerMm = RESI_DPI / 25.4;
   const mm = (v: number) => v * pxPerMm;
 
@@ -142,6 +164,24 @@ export function renderResiCanvas(shipping: ShippingInfo): HTMLCanvasElement {
   for (const line of wrapLines(ctx, isi || "-", contentW)) {
     ctx.fillText(line, padX, y);
     y += mm(4.4);
+  }
+
+  // Rincian isi poster: nama pendaki + gunung di dalamnya.
+  const gunung = formatGunungList(detail?.gunung ?? []);
+  const rincian = [
+    detail?.pendaki?.trim() ? `Pendaki: ${detail.pendaki.trim()}` : null,
+    gunung ? `Gunung: ${gunung}` : null,
+  ].filter((v): v is string => v !== null);
+
+  if (rincian.length) {
+    y += mm(1.2);
+    ctx.font = font(3.2, "600");
+    for (const text of rincian) {
+      for (const line of wrapLines(ctx, text, contentW)) {
+        ctx.fillText(line, padX, y);
+        y += mm(4.2);
+      }
+    }
   }
 
   // --- Pengirim (nama + WA admin) ---

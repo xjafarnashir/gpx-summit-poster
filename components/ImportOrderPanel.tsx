@@ -7,6 +7,7 @@ import { makeEmptyHike } from "@/lib/store";
 import { extractOrderPayload, orderSummary, parseNum } from "@/lib/orderPayload";
 import { WA_NUMBER, packageById, type PackageId } from "@/lib/landing";
 import { bgThemeById } from "@/lib/backgroundThemes";
+import { formatGunungList } from "@/lib/exportResiPng";
 
 /* ============================================================================
  * Fitur admin di NAVBAR /editor: tombol "Impor" membuka modal untuk paste
@@ -26,6 +27,9 @@ export default function ImportOrderPanel() {
 
   const shipping = useAppStore((s) => s.shipping);
   const setShipping = useAppStore((s) => s.setShipping);
+  const posterMode = useAppStore((s) => s.posterMode);
+  const stats = useAppStore((s) => s.stats);
+  const collection = useAppStore((s) => s.collection);
   const setPosterMode = useAppStore((s) => s.setPosterMode);
   const setStats = useAppStore((s) => s.setStats);
   const setTheme = useAppStore((s) => s.setTheme);
@@ -105,6 +109,17 @@ export default function ImportOrderPanel() {
     if (!shipping) return;
     const pkg = packageById(shipping.paket as PackageId);
     const now = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+
+    // Rincian isi poster diambil dari data editor (bukan payload pesanan) —
+    // sama dengan resi PNG di Export Full.
+    const pendaki = (posterMode === "single" ? stats.climberName : collection.climberName).trim();
+    const gunung = formatGunungList(
+      posterMode === "single" ? [stats.mountainName] : collection.hikes.map((h) => h.mountainName)
+    );
+    const rincian = [
+      pendaki ? `<div class="rinci">Pendaki: ${esc(pendaki)}</div>` : "",
+      gunung ? `<div class="rinci">Gunung: ${esc(gunung)}</div>` : "",
+    ].join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Resi — ${esc(shipping.penerima)}</title>
 <style>
   @page { size: 100mm 150mm; margin: 7mm; }
@@ -120,6 +135,7 @@ export default function ImportOrderPanel() {
   .hp { font-size: 12px; font-weight: 600; }
   .alamat { margin-top: 2px; font-size: 11.5px; white-space: pre-wrap; }
   .isi { margin-top: 2px; }
+  .rinci { margin-top: 2px; font-weight: 600; }
   .foot { margin-top: 10px; display: flex; justify-content: space-between; border-top: 1px dashed #999; padding-top: 6px; font-size: 9px; color: #666; }
 </style></head><body>
 <div class="frame">
@@ -133,6 +149,7 @@ export default function ImportOrderPanel() {
   <div class="sec">
     <div class="lbl">Isi paket</div>
     <div class="isi">${esc(shipping.ringkasan)}${pkg ? ` — ${esc(pkg.name)} (${esc(pkg.mount)})` : ""}</div>
+    ${rincian}
   </div>
   <div class="sec">
     <div class="lbl">Pengirim</div>

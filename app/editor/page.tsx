@@ -8,6 +8,7 @@ import CollectionCanvas from "@/components/CollectionCanvas";
 import CollectionEditor from "@/components/CollectionEditor";
 import ExportFullButton from "@/components/ExportFullButton";
 import ExportPngButton from "@/components/ExportPngButton";
+import ExportPreviewButton from "@/components/ExportPreviewButton";
 import GpxUpload from "@/components/GpxUpload";
 import ImportOrderPanel from "@/components/ImportOrderPanel";
 import MapEditor from "@/components/MapEditor";
@@ -92,6 +93,7 @@ export default function EditorPage() {
               <Sparkles size={13} />
               <span className="hidden sm:inline">Isi Contoh Data</span>
             </button>
+            <ExportPreviewButton />
             <ExportPngButton />
             <ExportFullButton />
             <button

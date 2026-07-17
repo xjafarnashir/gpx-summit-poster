@@ -95,9 +95,15 @@ export default function ExportFullButton() {
       }
 
       // Resi pengiriman (10x15 cm) — hanya ada bila pesanan sudah diimpor.
+      // Rincian pendaki/gunung diambil dari data editor (bukan payload pesanan)
+      // supaya cocok dengan poster yang benar-benar dikirim.
       if (shipping) {
         const resiBase = slug(shipping.penerima, "penerima");
-        zip.file(`resi-${resiBase}.png`, await canvasToPngBlob(renderResiCanvas(shipping)));
+        const detail =
+          posterMode === "single"
+            ? { pendaki: stats.climberName, gunung: [stats.mountainName] }
+            : { pendaki: collection.climberName, gunung: collection.hikes.map((h) => h.mountainName) };
+        zip.file(`resi-${resiBase}.png`, await canvasToPngBlob(renderResiCanvas(shipping, detail)));
       }
 
       const blob = await zip.generateAsync({ type: "blob" });
