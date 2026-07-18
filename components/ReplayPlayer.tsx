@@ -4,43 +4,65 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import type { StyleSpecification } from "maplibre-gl";
 import { ArrowUpRight, Boxes, Mountain, Pause, Play, RotateCcw } from "lucide-react";
-import { CARTO_STYLE_URL } from "@/lib/tileFetcher";
-import { buildMarkerElement } from "@/lib/mapIcons";
 import { haversineMeters } from "@/lib/geo";
 import { parseHmsToSeconds, secondsToHms } from "@/lib/statFormat";
 import type { ReplayData, ReplayHike } from "@/lib/replay";
 import type { TrackPoint } from "@/types";
 
+/** Basemap CITRA SATELIT (Esri World Imagery, gratis, CORS *). Dipilih karena:
+ *  (1) raster → jauh lebih andal dimuat daripada tile vektor yang kerap kosong,
+ *  (2) di-drape ke terrain 3D → gunung/lembah tampak nyata ala FATMAP/Strava. */
+const SATELLITE_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    sat: {
+      type: "raster",
+      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+      tileSize: 256,
+      maxzoom: 19,
+      attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
+    },
+  },
+  layers: [{ id: "sat", type: "raster", source: "sat" }],
+};
+
 /* ============================================================================
  * Pemutar Summit Replay (halaman publik hasil scan QR poster).
- * Marker bergerak dari basecamp ke puncak mengikuti jalur di atas RELIEF 3D
- * asli, kamera miring mengikuti pendaki (flyby ala Strava). Garis progres
- * memanjang; profil elevasi berjalan; jam menampilkan f × movingTime
- * (sintesis kecepatan-konstan — GPX tanpa timestamp). Bisa dialihkan ke 2D.
+ *
+ * - Chase-cam ala Strava: kamera memandang titik DI DEPAN pendaki di sepanjang
+ *   jalur — secara efektif kamera "di belakang" pendaki, medan tanjakan
+ *   terbentang ke atas layar.
+ * - Semua titik (pendaki, basecamp, puncak) digambar sebagai CIRCLE LAYER,
+ *   bukan marker DOM — circle layer menempel di permukaan terrain sehingga
+ *   TIDAK PERNAH tenggelam di balik punggungan.
+ * - Layout fullscreen (100dvh, tanpa scroll): peta memenuhi layar, info &
+ *   kontrol minimalis sebagai overlay + bilah bawah tipis.
+ * - Jam = f × movingTime (sintesis kecepatan-konstan; GPX tanpa timestamp).
  * ========================================================================== */
 
 const BASE_DURATION_MS = 35_000; // durasi animasi penuh pada speed 1x
 const SPEEDS = [1, 2, 4] as const;
 const FULL_SOURCE = "replay-full";
 const PROGRESS_SOURCE = "replay-progress";
+const HIKER_SOURCE = "replay-hiker";
+const ENDPOINT_SOURCE = "replay-endpoints";
 const DEM_SOURCE = "replay-dem";
-const HILLSHADE_LAYER = "replay-hillshade";
 
 /** DEM Terrarium AWS (gratis, CORS *) untuk relief 3D. */
 const TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
-const TERRAIN_EXAGGERATION = 1.7; // lebih dramatis supaya gunung/lembah menonjol
-const FOLLOW_PITCH = 74; // sangat miring → pandangan rendah menyusur medan
-const FOLLOW_ZOOM = 14.3; // dekat, khas chase-cam di belakang pendaki
-const OVERVIEW_PITCH_3D = 52; // overview tetap miring di mode 3D
-/** Chase-cam: kamera MEMANDANG titik ~sekian meter DI DEPAN pendaki, sehingga
- *  pendaki berada di sepertiga bawah layar dan medan/puncak terbentang di
- *  depannya — view "dari belakang" ala flyby Strava. */
+const TERRAIN_EXAGGERATION = 1.7;
+const FOLLOW_PITCH = 68; // miring khas flyby, masih nyaman diikuti
+const FOLLOW_ZOOM = 14.1;
+const OVERVIEW_PITCH_3D = 52;
+/** Kamera memandang titik ~sekian meter DI DEPAN pendaki → view dari belakang;
+ *  center selalu di lereng yang akan didaki sehingga kamera tak tenggelam. */
 const CHASE_LOOKAT_M = 450;
-/** Arah hadap kamera dihitung dari titik sedikit di depan (anti-goyang). */
+/** Arah hadap dihitung dari titik sedikit di depan (anti-goyang zigzag). */
 const CHASE_BEARING_M = 140;
 
-/** Bearing (derajat, -180..180) dari a ke b, keduanya [lng, lat]. */
+/** Bearing (derajat) dari a ke b, keduanya [lng, lat]. */
 function bearingDeg(a: [number, number], b: [number, number]): number {
   const toR = (d: number) => (d * Math.PI) / 180;
   const lat1 = toR(a[1]);
@@ -59,7 +81,7 @@ function lerpAngle(a: number, b: number, k: number): number {
 
 interface HikeGeom {
   coords: [number, number][]; // [lon, lat]
-  cumDist: number[]; // meter kumulatif per titik
+  cumDist: number[];
   totalDist: number;
   eleMin: number;
   eleMax: number;
@@ -114,15 +136,17 @@ const emptyLine = () =>
 const lineTo = (coords: [number, number][]) =>
   ({ type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: coords } }) as GeoJSON.Feature;
 
-/** Marker pendaki: dot merah berdenyut (kelas Tailwind global berlaku juga di elemen DOM). */
-function buildHikerElement(): HTMLDivElement {
-  const el = document.createElement("div");
-  el.className = "relative flex h-4 w-4";
-  el.innerHTML =
-    '<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#ef4444] opacity-50"></span>' +
-    '<span class="relative inline-flex h-4 w-4 rounded-full border-2 border-white bg-[#ef4444] shadow"></span>';
-  return el;
-}
+const pointTo = (lngLat: [number, number]) =>
+  ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: lngLat } }) as GeoJSON.Feature;
+
+const endpointsTo = (start: [number, number], end: [number, number]) =>
+  ({
+    type: "FeatureCollection",
+    features: [
+      { type: "Feature", properties: { kind: "start" }, geometry: { type: "Point", coordinates: start } },
+      { type: "Feature", properties: { kind: "end" }, geometry: { type: "Point", coordinates: end } },
+    ],
+  }) as GeoJSON.FeatureCollection;
 
 export default function ReplayPlayer({ data }: { data: ReplayData }) {
   const hikes: ReplayHike[] = useMemo(() => (data.kind === "single" ? [data] : data.hikes), [data]);
@@ -145,8 +169,6 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const hikerMarkerRef = useRef<maplibregl.Marker | null>(null);
-  const endpointMarkersRef = useRef<maplibregl.Marker[]>([]);
   const elevCanvasRef = useRef<HTMLCanvasElement>(null);
   const elevStaticRef = useRef<HTMLCanvasElement | null>(null);
   const clockRef = useRef<HTMLSpanElement>(null);
@@ -157,11 +179,8 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   const speedRef = useRef<number>(1);
   const activeIdxRef = useRef(0);
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Kamera follow 3D: state kamera yang di-lerp tiap frame agar mulus.
   const mode3dRef = useRef(true);
   const followActiveRef = useRef(false);
-  // `ele` disimpan terpisah dan di-lerp lambat agar zoom adaptif naik mulus
-  // mengikuti terrain yang terangkat exaggeration, tanpa kamera "tenggelam".
   const camRef = useRef({ lng: 0, lat: 0, bearing: 0, pitch: 0, zoom: 0, ele: 0 });
 
   useEffect(() => {
@@ -179,6 +198,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     const dpr = window.devicePixelRatio || 1;
     const w = cv.clientWidth * dpr;
     const hpx = cv.clientHeight * dpr;
+    if (w === 0 || hpx === 0) return;
     cv.width = w;
     cv.height = hpx;
 
@@ -190,7 +210,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     const ctx = off.getContext("2d");
     if (!ctx) return;
 
-    const pad = 8 * dpr;
+    const pad = 5 * dpr;
     const range = Math.max(g.eleMax - g.eleMin, 1);
     const xAt = (i: number) => (g.cumDist[i] / g.totalDist) * w;
     const yAt = (ele: number) => hpx - pad - ((ele - g.eleMin) / range) * (hpx - pad * 2);
@@ -200,7 +220,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     for (let i = 0; i < h.points.length; i++) ctx.lineTo(xAt(i), yAt(h.points[i][2]));
     ctx.lineTo(w, hpx);
     ctx.closePath();
-    ctx.fillStyle = "rgba(217,119,87,0.18)";
+    ctx.fillStyle = "rgba(217,119,87,0.2)";
     ctx.fill();
 
     ctx.beginPath();
@@ -211,15 +231,8 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       else ctx.lineTo(x, y);
     }
     ctx.strokeStyle = "#d97757";
-    ctx.lineWidth = 2 * dpr;
+    ctx.lineWidth = 1.6 * dpr;
     ctx.stroke();
-
-    ctx.fillStyle = "rgba(120,120,120,0.9)";
-    ctx.font = `${10 * dpr}px monospace`;
-    ctx.textBaseline = "top";
-    ctx.fillText(`${Math.round(g.eleMax)} m`, 4 * dpr, 3 * dpr);
-    ctx.textBaseline = "bottom";
-    ctx.fillText(`${Math.round(g.eleMin)} m`, 4 * dpr, hpx - 3 * dpr);
 
     elevStaticRef.current = off;
   }, [geoms, hikes]);
@@ -230,25 +243,21 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     if (!mapContainerRef.current || mapRef.current) return;
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: CARTO_STYLE_URL.voyager,
+      style: SATELLITE_STYLE,
       center: geoms[0].coords[0],
       zoom: 12,
-      maxPitch: 80, // default MapLibre 60 → naikkan agar flyby lebih miring
+      maxPitch: 80,
       attributionControl: { compact: true },
     });
 
-    // Pakai "style.load" (bukan "load"): menyala saat style selesai di-parse,
-    // TIDAK menunggu tile basemap — kalau CDN tile lambat/terblokir, animasi +
-    // rute + terrain tetap jalan. `once`-style guard cegah setup ganda.
+    // "style.load" (bukan "load"): tak menunggu tile — animasi selalu bisa mulai.
     let didSetup = false;
     const setup = () => {
       if (didSetup) return;
       didSetup = true;
 
-      // DEM + HILLSHADE dulu (best-effort) supaya relief benar-benar TERLIHAT
-      // (lembah/punggungan terbayang), bukan cuma geometri terangkat yang
-      // tampak datar di basemap vektor. Ditaruh sebelum garis rute → rute di
-      // atas relief. Kegagalan di sini tak boleh mematikan animasi.
+      // DEM untuk mengangkat terrain 3D (best-effort). Tak perlu hillshade —
+      // citra satelit sudah menampilkan relief medan.
       try {
         map.addSource(DEM_SOURCE, {
           type: "raster-dem",
@@ -258,41 +267,72 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           maxzoom: 15,
           attribution: "Terrain: Mapzen/Terrarium · AWS",
         });
-        map.addLayer({
-          id: HILLSHADE_LAYER,
-          type: "hillshade",
-          source: DEM_SOURCE,
-          paint: {
-            "hillshade-exaggeration": 0.6,
-            "hillshade-shadow-color": "#3a2f27",
-            "hillshade-highlight-color": "#fff6e8",
-            "hillshade-accent-color": "#5a4a3a",
-          },
-        });
       } catch {
-        /* hillshade opsional */
+        /* DEM opsional */
       }
 
-      // CORE (garis) — di atas hillshade.
+      // Garis rute — kontras di atas citra satelit gelap.
       map.addSource(FULL_SOURCE, { type: "geojson", data: emptyLine() });
       map.addLayer({
         id: FULL_SOURCE,
         type: "line",
         source: FULL_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#d97757", "line-width": 3, "line-opacity": 0.3 },
+        paint: { "line-color": "#ffffff", "line-width": 2.5, "line-opacity": 0.4 },
       });
       map.addSource(PROGRESS_SOURCE, { type: "geojson", data: emptyLine() });
+      // Casing putih di bawah + garis oranye terang di atas → jalur "menyala".
+      map.addLayer({
+        id: `${PROGRESS_SOURCE}-casing`,
+        type: "line",
+        source: PROGRESS_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#ffffff", "line-width": 7, "line-opacity": 0.9 },
+      });
       map.addLayer({
         id: PROGRESS_SOURCE,
         type: "line",
         source: PROGRESS_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#d6381d", "line-width": 5, "line-opacity": 0.97 },
+        paint: { "line-color": "#ff5a1f", "line-width": 4, "line-opacity": 1 },
       });
+
+      // Titik basecamp/puncak + pendaki sebagai CIRCLE LAYER (menempel di
+      // permukaan terrain → tidak pernah tenggelam di balik punggungan).
+      map.addSource(ENDPOINT_SOURCE, { type: "geojson", data: endpointsTo(geoms[0].coords[0], geoms[0].coords[0]) });
+      map.addLayer({
+        id: ENDPOINT_SOURCE,
+        type: "circle",
+        source: ENDPOINT_SOURCE,
+        paint: {
+          "circle-radius": 6,
+          "circle-color": ["match", ["get", "kind"], "start", "#0ea5e9", "#16a34a"],
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2,
+        },
+      });
+      map.addSource(HIKER_SOURCE, { type: "geojson", data: pointTo(geoms[0].coords[0]) });
+      map.addLayer({
+        id: `${HIKER_SOURCE}-glow`,
+        type: "circle",
+        source: HIKER_SOURCE,
+        paint: { "circle-radius": 13, "circle-color": "#ef4444", "circle-opacity": 0.25 },
+      });
+      map.addLayer({
+        id: `${HIKER_SOURCE}-dot`,
+        type: "circle",
+        source: HIKER_SOURCE,
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#ef4444",
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2.5,
+        },
+      });
+
       setMapReady(true);
 
-      // Angkat relief jadi 3D + langit/kabut.
+      // Relief 3D + langit (best-effort).
       try {
         if (mode3dRef.current) map.setTerrain({ source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION });
         map.setSky({
@@ -304,63 +344,58 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           "fog-ground-blend": 0.35,
         });
       } catch {
-        /* terrain/sky opsional — animasi tetap jalan dalam mode datar */
+        /* terrain/sky opsional */
       }
     };
 
     if (map.isStyleLoaded()) setup();
     else {
       map.on("style.load", setup);
-      map.on("load", setup); // jaring pengaman bila style.load terlewat
+      map.on("load", setup);
     }
 
     mapRef.current = map;
     return () => {
       map.remove();
       mapRef.current = null;
-      hikerMarkerRef.current = null;
-      endpointMarkersRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Gambar keseluruhan frame animasi pada fraksi f (marker, garis, elevasi, jam). */
+  /** Frame animasi pada fraksi f: pendaki, garis progres, elevasi, jam. */
   const renderFrame = useCallback(
     (f: number) => {
       const map = mapRef.current;
       const h = hikes[activeIdxRef.current];
       const g = geoms[activeIdxRef.current];
-      // Jangan pakai isStyleLoaded(): dengan terrain aktif ia bisa tetap false
-      // selama DEM dimuat, membuat animasi macet. Cukup cek source siap.
       if (!map || !map.getSource(PROGRESS_SOURCE)) return;
 
       const { lngLat, ele, idx } = pointAtFraction(h, g, f);
 
-      hikerMarkerRef.current?.setLngLat(lngLat);
+      (map.getSource(HIKER_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(pointTo(lngLat));
       const progress = g.coords.slice(0, idx + 1).concat([lngLat]);
       (map.getSource(PROGRESS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(lineTo(progress));
 
-      // Profil elevasi: blit statis + kursor + dot.
       const cv = elevCanvasRef.current;
       const staticCv = elevStaticRef.current;
-      if (cv && staticCv) {
+      if (cv && staticCv && cv.width > 0) {
         const ctx = cv.getContext("2d");
         if (ctx) {
           ctx.clearRect(0, 0, cv.width, cv.height);
           ctx.drawImage(staticCv, 0, 0);
           const x = f * cv.width;
-          const pad = 8 * (cv.width / cv.clientWidth || 1);
+          const pad = 5 * (cv.width / (cv.clientWidth || 1));
           const range = Math.max(g.eleMax - g.eleMin, 1);
           const y = cv.height - pad - ((ele - g.eleMin) / range) * (cv.height - pad * 2);
-          ctx.strokeStyle = "rgba(217,119,87,0.9)";
-          ctx.lineWidth = 2;
+          ctx.strokeStyle = "rgba(214,56,29,0.85)";
+          ctx.lineWidth = 1.5;
           ctx.beginPath();
           ctx.moveTo(x, 0);
           ctx.lineTo(x, cv.height);
           ctx.stroke();
-          ctx.fillStyle = "#ef4444";
+          ctx.fillStyle = "#d6381d";
           ctx.beginPath();
-          ctx.arc(x, y, 5, 0, Math.PI * 2);
+          ctx.arc(x, y, 4, 0, Math.PI * 2);
           ctx.fill();
           ctx.strokeStyle = "#fff";
           ctx.stroke();
@@ -385,7 +420,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       );
       followActiveRef.current = false;
       map.fitBounds(bounds, {
-        padding: 50,
+        padding: 60,
         pitch: mode3dRef.current ? OVERVIEW_PITCH_3D : 0,
         bearing: 0,
         duration: animated ? 900 : 0,
@@ -394,12 +429,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     [geoms]
   );
 
-  /** Kamera flyby ala Strava chase-cam: kamera MEMANDANG titik CHASE_LOOKAT_M
-   *  meter DI DEPAN pendaki di sepanjang jalur GPX — sehingga kamera berada
-   *  secara fisik di belakang/bawah pendaki dan medan tanjakan terbentang ke
-   *  atas layar. Ini mencegah kamera "tenggelam" saat elevasi menanjak karena
-   *  MapLibre selalu menempatkan kamera DI ATAS titik center (yang kini selalu
-   *  berada di terrain yang lebih tinggi dari posisi pendaki). */
+  /** Chase-cam: kamera memandang titik DI DEPAN pendaki (view dari belakang). */
   const updateFollowCamera = useCallback(
     (f: number) => {
       const map = mapRef.current;
@@ -408,15 +438,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       const h = hikes[activeIdxRef.current];
       const { lngLat: cur, ele } = pointAtFraction(h, g, f);
 
-      // Bearing: arah dari posisi pendaki ke titik CHASE_BEARING_M meter ke
-      // depan — lebih stabil dari titik sangat dekat yang bereaksi ke zigzag.
       const fBear = Math.min(1, f + CHASE_BEARING_M / g.totalDist);
-      const aheadBear = pointAtFraction(h, g, fBear).lngLat;
-      const targetBearing = bearingDeg(cur, aheadBear);
+      const targetBearing = bearingDeg(cur, pointAtFraction(h, g, fBear).lngLat);
 
-      // Camera center: titik CHASE_LOOKAT_M meter DI DEPAN pendaki di jalur.
-      // Dengan ini kamera memandang ke atas lereng yang akan didaki, bukan ke
-      // lereng yang sudah dilewati → tidak tenggelam saat menanjak.
       const fLookAt = Math.min(1, f + CHASE_LOOKAT_M / g.totalDist);
       const lookAt = pointAtFraction(h, g, fLookAt).lngLat;
 
@@ -432,18 +456,15 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
         followActiveRef.current = true;
       }
       const c = camRef.current;
-
-      // Lerp center ke titik lookahead (sedikit lebih lambat agar mulus).
       c.lng += (lookAt[0] - c.lng) * 0.12;
       c.lat += (lookAt[1] - c.lat) * 0.12;
       c.bearing = lerpAngle(c.bearing, targetBearing, 0.05);
       c.pitch += (FOLLOW_PITCH - c.pitch) * 0.08;
 
-      // Zoom adaptif: semakin tinggi elevasi pendaki, sedikit zoom-out agar
-      // medan lookahead tetap terlihat meski terrain terangkat exaggeration.
+      // Zoom adaptif: makin tinggi posisi pendaki, sedikit mundur supaya medan
+      // lookahead tetap terlihat meski terrain terangkat exaggeration.
       c.ele += (ele - c.ele) * 0.07;
-      const eleRange = Math.max(g.eleMax - g.eleMin, 1);
-      const climbRatio = Math.max(0, Math.min(1, (c.ele - g.eleMin) / eleRange));
+      const climbRatio = Math.max(0, Math.min(1, (c.ele - g.eleMin) / Math.max(g.eleMax - g.eleMin, 1)));
       const targetZoom = FOLLOW_ZOOM - climbRatio * 0.9;
       c.zoom += (targetZoom - c.zoom) * 0.08;
 
@@ -452,7 +473,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     [geoms, hikes]
   );
 
-  /* --------------------- muat/hike aktif ke peta -------------------------- */
+  /* --------------------- muat hike aktif ke peta -------------------------- */
 
   useEffect(() => {
     const map = mapRef.current;
@@ -460,25 +481,10 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
     (map.getSource(FULL_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(lineTo(geom.coords));
     (map.getSource(PROGRESS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(emptyLine());
-
-    // Marker ujung (basecamp/puncak) + marker pendaki.
-    endpointMarkersRef.current.forEach((m) => m.remove());
-    const mk = (type: "basecamp" | "summit", lngLat: [number, number]) => {
-      const el = buildMarkerElement(type);
-      el.style.cursor = "default";
-      el.style.width = "22px";
-      el.style.height = "22px";
-      return new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(lngLat).addTo(map);
-    };
-    endpointMarkersRef.current = [mk("basecamp", geom.coords[0]), mk("summit", geom.coords[geom.coords.length - 1])];
-
-    if (!hikerMarkerRef.current) {
-      hikerMarkerRef.current = new maplibregl.Marker({ element: buildHikerElement(), anchor: "center" })
-        .setLngLat(geom.coords[0])
-        .addTo(map);
-    } else {
-      hikerMarkerRef.current.setLngLat(geom.coords[0]);
-    }
+    (map.getSource(ENDPOINT_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(
+      endpointsTo(geom.coords[0], geom.coords[geom.coords.length - 1])
+    );
+    (map.getSource(HIKER_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(pointTo(geom.coords[0]));
 
     applyOverview(true);
     drawStaticElevation();
@@ -507,8 +513,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
         lastTs = ts;
         return;
       }
-      // Clamp: setelah tab sempat di-background (rAF pause), jangan biarkan
-      // dt raksasa membuat animasi melompat jauh saat kembali.
+      // Clamp dt: setelah tab di-background, jangan melompat jauh saat kembali.
       const dt = Math.min(lastTs ? ts - lastTs : 0, 100);
       lastTs = ts;
 
@@ -520,7 +525,6 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
         setPlaying(false);
         const idx = activeIdxRef.current;
         if (idx < hikes.length - 1) {
-          // Koleksi: jeda sejenak lalu lanjut gunung berikutnya.
           advanceTimerRef.current = setTimeout(() => {
             fRef.current = 0;
             setActiveIdx(idx + 1);
@@ -528,7 +532,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           }, 1500);
         } else {
           setFinishedAll(true);
-          applyOverview(true); // tarik mundur, tampilkan seluruh jalur di relief
+          applyOverview(true); // tarik mundur: seluruh jalur di atas relief
         }
       }
     };
@@ -540,9 +544,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     };
   }, [hikes.length, renderFrame, updateFollowCamera, applyOverview]);
 
-  // Autoplay setelah relief benar-benar termuat (map "idle") supaya animasi
-  // tidak berjalan di atas dataran datar sebelum terrain tampak. Fallback timer
-  // menjamin tetap main bila idle tak kunjung datang.
+  // Autoplay setelah peta idle (relief termuat) — fallback 4 dtk.
   useEffect(() => {
     if (!mapReady) return;
     const map = mapRef.current;
@@ -579,7 +581,6 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
   const handlePlayPause = () => {
     if (fRef.current >= 1 && !playing) {
-      // Selesai → play lagi = ulang dari awal (gunung aktif).
       fRef.current = 0;
       setFinishedAll(false);
     }
@@ -596,9 +597,12 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     mode3dRef.current = next;
     const map = mapRef.current;
     if (!map) return;
-    map.setTerrain(next ? { source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION } : null);
+    try {
+      map.setTerrain(next ? { source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION } : null);
+    } catch {
+      /* terrain opsional */
+    }
     followActiveRef.current = false;
-    // Saat pindah ke 2D, atau ke 3D sambil tidak memutar → kembali ke overview.
     if (!next || !playingRef.current) applyOverview(true);
   };
 
@@ -610,141 +614,108 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       ? [data.via ? `via ${data.via}` : null, data.date].filter(Boolean).join(" · ")
       : [data.climber, `${hikes.length} gunung`].filter(Boolean).join(" · ");
 
+  const overlayChip =
+    "rounded-full bg-black/45 px-3 py-1.5 text-[11px] font-semibold text-white backdrop-blur-sm";
+
   return (
-    <div className="min-h-screen">
-      {/* header brand + CTA */}
-      <header className="sticky top-0 z-40 px-4 pt-3 pb-1">
-        <div className="clay-card mx-auto flex h-14 max-w-lg items-center justify-between gap-3 !rounded-full px-4">
-          <Link href="/landingpage" className="flex min-w-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#d97757] to-[#b8532f] text-white">
-              <Mountain size={16} />
-            </span>
-            <span className="truncate text-sm font-bold tracking-tight text-zinc-900 dark:text-zinc-50">myKoordinat</span>
-          </Link>
-          <Link
-            href="/landingpage"
-            className="clay-chip flex shrink-0 items-center gap-1 px-3.5 py-2 text-xs font-semibold text-[#9c4a2c] dark:text-[#e59a7c]"
-          >
-            Pesan postermu
-            <ArrowUpRight size={12} />
-          </Link>
-        </div>
+    <div className="flex h-[100dvh] flex-col overflow-hidden">
+      {/* bilah atas tipis: brand + CTA */}
+      <header className="flex h-12 shrink-0 items-center justify-between gap-3 px-3">
+        <Link href="/landingpage" className="flex min-w-0 items-center gap-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#d97757] to-[#b8532f] text-white">
+            <Mountain size={13} />
+          </span>
+          <span className="truncate text-xs font-bold tracking-tight text-zinc-900 dark:text-zinc-50">myKoordinat</span>
+        </Link>
+        <Link
+          href="/landingpage"
+          className="clay-chip flex shrink-0 items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-[#9c4a2c] dark:text-[#e59a7c]"
+        >
+          Pesan postermu
+          <ArrowUpRight size={11} />
+        </Link>
       </header>
 
-      <main className="mx-auto w-full max-w-lg px-4 pb-10 pt-4">
-        {/* judul */}
-        <div className="px-1">
-          <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-[#b8532f] dark:text-[#e59a7c]">
-            Summit Replay
-          </p>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-[#3d3929] dark:text-[#f0eee4]">{title}</h1>
-          {subtitle && <p className="mt-0.5 text-sm text-zinc-500 dark:text-zinc-400">{subtitle}</p>}
+      {/* peta memenuhi sisa layar */}
+      <div className="relative min-h-0 flex-1">
+        <div ref={mapContainerRef} className="absolute inset-0" />
+
+        {/* judul overlay */}
+        <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[70%]">
+          <div className="w-fit rounded-xl bg-black/45 px-3 py-2 backdrop-blur-sm">
+            <p className="font-mono text-[8px] uppercase tracking-[0.25em] text-[#ffcf8a]">Summit Replay</p>
+            <h1 className="truncate text-base font-extrabold leading-tight text-white">{title}</h1>
+            {subtitle && <p className="truncate text-[10px] text-white/75">{subtitle}</p>}
+          </div>
+          {/* tab gunung (koleksi) */}
+          {hikes.length > 1 && (
+            <div className="pointer-events-auto mt-1.5 flex flex-wrap gap-1.5">
+              {hikes.map((h, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => switchHike(i, true)}
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-semibold backdrop-blur-sm transition-colors ${
+                    i === activeIdx ? "bg-[#d97757] text-white" : "bg-black/45 text-white/80"
+                  }`}
+                >
+                  {i + 1}. {h.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* tab gunung (koleksi) */}
-        {hikes.length > 1 && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {hikes.map((h, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => switchHike(i, true)}
-                className={`clay-chip px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  i === activeIdx
-                    ? "text-[#9c4a2c] dark:text-[#e59a7c]"
-                    : "text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-                }`}
-              >
-                {i + 1}. {h.name}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* peta */}
-        <div className="clay-card relative mt-3 overflow-hidden !rounded-2xl p-2">
-          <div ref={mapContainerRef} className="h-[45vh] min-h-[280px] w-full overflow-hidden rounded-xl" />
-          <button
-            type="button"
-            onClick={toggle3d}
-            title={mode3d ? "Beralih ke tampilan datar (2D)" : "Beralih ke relief 3D"}
-            className="clay-chip absolute right-4 top-4 z-10 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-200"
-          >
-            <Boxes size={13} />
+        {/* toggle 3D + speed di kanan-atas peta */}
+        <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-1.5">
+          <button type="button" onClick={toggle3d} title="Ganti mode tampilan" className={`${overlayChip} flex items-center gap-1`}>
+            <Boxes size={11} />
             {mode3d ? "3D" : "2D"}
           </button>
+          <button type="button" onClick={cycleSpeed} title="Kecepatan animasi" className={`${overlayChip} font-mono`}>
+            {speed}x
+          </button>
         </div>
+      </div>
 
-        {/* profil elevasi + readout */}
-        <div className="clay-card mt-3 p-3">
-          <div className="flex items-baseline justify-between px-1">
-            <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-zinc-400">Profil Elevasi</span>
-            <span className="flex items-baseline gap-3 font-mono text-xs text-zinc-600 dark:text-zinc-300">
-              <span ref={eleReadoutRef}>{Math.round(geom.eleMin)} mdpl</span>
-              {geom.totalSeconds > 0 && (
+      {/* bilah bawah tipis: elevasi + kontrol + statistik */}
+      <div className="shrink-0 px-3 pb-2 pt-1.5">
+        <div className="relative">
+          <canvas ref={elevCanvasRef} className="h-12 w-full" />
+          <span className="pointer-events-none absolute right-1 top-0 font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
+            <span ref={eleReadoutRef}>{Math.round(geom.eleMin)} mdpl</span>
+            {geom.totalSeconds > 0 && (
+              <>
+                {" · "}
                 <span ref={clockRef} className="font-semibold text-[#b8532f] dark:text-[#e59a7c]">
                   00:00:00
                 </span>
-              )}
-            </span>
-          </div>
-          <canvas ref={elevCanvasRef} className="mt-2 h-24 w-full" />
+              </>
+            )}
+          </span>
         </div>
-
-        {/* kontrol */}
-        <div className="mt-3 flex items-center justify-center gap-2">
+        <div className="mt-1.5 flex items-center gap-2">
           <button
             type="button"
             onClick={handlePlayPause}
-            className="clay-btn flex items-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-5 py-2.5 text-sm font-semibold text-white"
+            title={playing ? "Pause" : finishedAll ? "Putar lagi" : "Putar"}
+            className="clay-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-[#d97757] to-[#b8532f] text-white"
           >
-            {playing ? <Pause size={15} /> : <Play size={15} />}
-            {playing ? "Pause" : finishedAll ? "Putar lagi" : "Putar"}
+            {playing ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
           </button>
           <button
             type="button"
             onClick={handleRestart}
             title="Ulangi dari awal"
-            className="clay-chip flex items-center gap-1.5 px-3.5 py-2.5 text-sm font-medium text-zinc-600 dark:text-zinc-300"
+            className="clay-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-600 dark:text-zinc-300"
           >
-            <RotateCcw size={14} />
+            <RotateCcw size={13} />
           </button>
-          <button
-            type="button"
-            onClick={cycleSpeed}
-            title="Kecepatan animasi"
-            className="clay-chip px-3.5 py-2.5 font-mono text-sm font-semibold text-zinc-600 dark:text-zinc-300"
-          >
-            {speed}x
-          </button>
+          <p className="min-w-0 flex-1 truncate text-right font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
+            {hike.stats.summitElevationM.toLocaleString("id-ID")} mdpl · {hike.stats.distanceKm.toFixed(1)} km · +
+            {hike.stats.elevationGainM} m{geom.totalSeconds > 0 && ` · ${hike.movingTime}`}
+          </p>
         </div>
-
-        {/* statistik */}
-        <div className="clay-card mt-3 grid grid-cols-2 gap-4 p-5 sm:grid-cols-4">
-          <Stat label="Ketinggian" value={`${hike.stats.summitElevationM.toLocaleString("id-ID")}`} unit="mdpl" />
-          <Stat label="Jarak" value={hike.stats.distanceKm.toFixed(2)} unit="km" />
-          <Stat label="Elev Gain" value={`+${hike.stats.elevationGainM}`} unit="m" />
-          <Stat label="Waktu" value={geom.totalSeconds > 0 ? hike.movingTime : "—"} unit="" />
-        </div>
-
-        <p className="mt-5 text-center text-xs text-zinc-400 dark:text-zinc-500">
-          Poster pendakian custom dari file GPX —{" "}
-          <Link href="/landingpage" className="font-semibold text-[#b8532f] underline-offset-2 hover:underline dark:text-[#e59a7c]">
-            myKoordinat
-          </Link>
-        </p>
-      </main>
-    </div>
-  );
-}
-
-function Stat({ label, value, unit }: { label: string; value: string; unit: string }) {
-  return (
-    <div className="text-center">
-      <div className="font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-400">{label}</div>
-      <div className="mt-1 text-lg font-extrabold text-zinc-900 dark:text-zinc-50">
-        {value}
-        {unit && <span className="ml-1 text-[10px] font-semibold text-zinc-400">{unit}</span>}
       </div>
     </div>
   );
