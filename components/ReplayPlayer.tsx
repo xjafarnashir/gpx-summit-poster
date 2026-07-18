@@ -163,9 +163,11 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   const [finishedAll, setFinishedAll] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [mode3d, setMode3d] = useState(true);
+  const [mapError, setMapError] = useState<string | null>(null);
   // Google-Maps-style: begitu user cubit/geser peta, follow berhenti & tombol
   // "tengahkan" muncul untuk kembali mengikuti pendaki.
   const [showRecenter, setShowRecenter] = useState(false);
+  const mapReadyRef = useRef(false);
 
   const hike = hikes[activeIdx];
   const geom = geoms[activeIdx];
@@ -352,7 +354,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
         },
       });
 
+      mapReadyRef.current = true;
       setMapReady(true);
+      setMapError(null);
 
       // Langit best-effort (tak butuh terrain).
       try {
@@ -386,14 +390,39 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       map.on("sourcedata", onDemLoaded);
     };
 
-    if (map.isStyleLoaded()) setup();
-    else {
-      map.on("style.load", setup);
-      map.on("load", setup);
-    }
+    // Jalankan setup SEGERA setelah style siap — via BANYAK pemicu (event +
+    // polling) supaya tak bergantung satu event yang bisa terlewat. Tanpa ini,
+    // bila style.load/load tak menyala, seluruh konten replay (rute, marker,
+    // animasi) tak pernah muncul karena digerbang mapReady.
+    const trySetup = () => {
+      if (map.isStyleLoaded()) setup();
+    };
+    map.on("style.load", trySetup);
+    map.on("load", trySetup);
+    map.on("idle", trySetup);
+    trySetup();
+    const setupPoll = setInterval(() => {
+      if (mapRef.current == null) return;
+      trySetup();
+      if (mapReadyRef.current) clearInterval(setupPoll);
+    }, 200);
+
+    // Surface error tile/peta ke UI (bukan hitam senyap) → mudah didiagnosa.
+    const errTimer = setTimeout(() => {
+      if (!mapReadyRef.current) setMapError("Peta lambat dimuat — cek koneksi internet.");
+    }, 9000);
+    map.on("error", (e) => {
+      // Hanya tampilkan error KRITIS (sebelum peta siap). Setelah siap, hiccup
+      // tile individual diabaikan agar tak memunculkan peringatan palsu.
+      if (mapReadyRef.current) return;
+      const msg = (e as unknown as { error?: { message?: string } })?.error?.message;
+      if (msg) setMapError(msg.slice(0, 140));
+    });
 
     mapRef.current = map;
     return () => {
+      clearInterval(setupPoll);
+      clearTimeout(errTimer);
       map.remove();
       mapRef.current = null;
     };
@@ -728,6 +757,22 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
             {speed}x
           </button>
         </div>
+
+        {/* status: memuat / error peta — jangan biarkan hitam senyap */}
+        {!mapReady && !mapError && (
+          <div className="pointer-events-none absolute inset-0 z-0 flex items-center justify-center">
+            <span className="rounded-full bg-black/50 px-4 py-2 text-xs text-white/80 backdrop-blur-sm">
+              Memuat peta…
+            </span>
+          </div>
+        )}
+        {mapError && (
+          <div className="pointer-events-none absolute inset-x-4 bottom-16 z-10 flex justify-center">
+            <span className="max-w-full rounded-xl bg-red-900/70 px-3 py-2 text-center text-[11px] text-red-100 backdrop-blur-sm">
+              Peta bermasalah: {mapError}
+            </span>
+          </div>
+        )}
 
         {/* tombol "Tengahkan" ala Google Maps — muncul saat user menggeser peta */}
         {showRecenter && (
