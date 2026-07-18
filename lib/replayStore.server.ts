@@ -33,11 +33,12 @@ async function readVercelBlob(id: string): Promise<ReplayData | null> {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) return null;
   try {
-    const { head } = await import("@vercel/blob");
-    // head() cepat untuk mengecek keberadaan objek sebelum fetch isi.
-    const meta = await head(vercelKey(id), { token }).catch(() => null);
-    if (!meta) return null;
-    const res = await fetch(meta.url);
+    const { list } = await import("@vercel/blob");
+    // Karena head() butuh URL lengkap, gunakan list() dengan prefix path untuk mencari file
+    const response = await list({ prefix: vercelKey(id), token });
+    const blob = response.blobs[0];
+    if (!blob) return null;
+    const res = await fetch(blob.url);
     if (!res.ok) return null;
     const raw = (await res.json()) as unknown;
     return parseReplayData(raw);
