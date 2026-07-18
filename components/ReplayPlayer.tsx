@@ -160,7 +160,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   // Kamera follow 3D: state kamera yang di-lerp tiap frame agar mulus.
   const mode3dRef = useRef(true);
   const followActiveRef = useRef(false);
-  const camRef = useRef({ lng: 0, lat: 0, bearing: 0, pitch: 0, zoom: 0 });
+  // `ele` disimpan terpisah dan di-lerp lambat agar zoom adaptif naik mulus
+  // mengikuti terrain yang terangkat exaggeration, tanpa kamera "tenggelam".
+  const camRef = useRef({ lng: 0, lat: 0, bearing: 0, pitch: 0, zoom: 0, ele: 0 });
 
   useEffect(() => {
     playingRef.current = playing;
@@ -392,28 +394,59 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     [geoms]
   );
 
-  /** Kamera flyby: lerp mulus mengikuti pendaki + menghadap arah jalan (3D). */
+  /** Kamera flyby ala Strava chase-cam: kamera MEMANDANG titik CHASE_LOOKAT_M
+   *  meter DI DEPAN pendaki di sepanjang jalur GPX — sehingga kamera berada
+   *  secara fisik di belakang/bawah pendaki dan medan tanjakan terbentang ke
+   *  atas layar. Ini mencegah kamera "tenggelam" saat elevasi menanjak karena
+   *  MapLibre selalu menempatkan kamera DI ATAS titik center (yang kini selalu
+   *  berada di terrain yang lebih tinggi dari posisi pendaki). */
   const updateFollowCamera = useCallback(
     (f: number) => {
       const map = mapRef.current;
       if (!map) return;
       const g = geoms[activeIdxRef.current];
       const h = hikes[activeIdxRef.current];
-      const cur = pointAtFraction(h, g, f).lngLat;
-      const ahead = pointAtFraction(h, g, Math.min(1, f + 0.03)).lngLat;
-      const targetBearing = bearingDeg(cur, ahead);
+      const { lngLat: cur, ele } = pointAtFraction(h, g, f);
+
+      // Bearing: arah dari posisi pendaki ke titik CHASE_BEARING_M meter ke
+      // depan — lebih stabil dari titik sangat dekat yang bereaksi ke zigzag.
+      const fBear = Math.min(1, f + CHASE_BEARING_M / g.totalDist);
+      const aheadBear = pointAtFraction(h, g, fBear).lngLat;
+      const targetBearing = bearingDeg(cur, aheadBear);
+
+      // Camera center: titik CHASE_LOOKAT_M meter DI DEPAN pendaki di jalur.
+      // Dengan ini kamera memandang ke atas lereng yang akan didaki, bukan ke
+      // lereng yang sudah dilewati → tidak tenggelam saat menanjak.
+      const fLookAt = Math.min(1, f + CHASE_LOOKAT_M / g.totalDist);
+      const lookAt = pointAtFraction(h, g, fLookAt).lngLat;
 
       if (!followActiveRef.current) {
-        const c = map.getCenter();
-        camRef.current = { lng: c.lng, lat: c.lat, bearing: map.getBearing(), pitch: map.getPitch(), zoom: map.getZoom() };
+        camRef.current = {
+          lng: lookAt[0],
+          lat: lookAt[1],
+          bearing: map.getBearing(),
+          pitch: map.getPitch(),
+          zoom: map.getZoom(),
+          ele,
+        };
         followActiveRef.current = true;
       }
       const c = camRef.current;
-      c.lng += (cur[0] - c.lng) * 0.16;
-      c.lat += (cur[1] - c.lat) * 0.16;
+
+      // Lerp center ke titik lookahead (sedikit lebih lambat agar mulus).
+      c.lng += (lookAt[0] - c.lng) * 0.12;
+      c.lat += (lookAt[1] - c.lat) * 0.12;
       c.bearing = lerpAngle(c.bearing, targetBearing, 0.05);
       c.pitch += (FOLLOW_PITCH - c.pitch) * 0.08;
-      c.zoom += (FOLLOW_ZOOM - c.zoom) * 0.08;
+
+      // Zoom adaptif: semakin tinggi elevasi pendaki, sedikit zoom-out agar
+      // medan lookahead tetap terlihat meski terrain terangkat exaggeration.
+      c.ele += (ele - c.ele) * 0.07;
+      const eleRange = Math.max(g.eleMax - g.eleMin, 1);
+      const climbRatio = Math.max(0, Math.min(1, (c.ele - g.eleMin) / eleRange));
+      const targetZoom = FOLLOW_ZOOM - climbRatio * 0.9;
+      c.zoom += (targetZoom - c.zoom) * 0.08;
+
       map.jumpTo({ center: [c.lng, c.lat], bearing: c.bearing, pitch: c.pitch, zoom: c.zoom });
     },
     [geoms, hikes]
