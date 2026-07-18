@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Clapperboard, Loader2 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { computeAvgPace } from "@/lib/statFormat";
 import { compressImageToDataUrl } from "@/lib/image";
+import { buildSingleReplayPayload, isReplayUrl, replayPath } from "@/lib/replay";
 import { STAT_ICONS } from "@/lib/iconMap";
 import { computeLandscapePhotoFrames, computePhotoFrames } from "@/lib/posterLayout";
 import { isLandscapeSize } from "@/lib/projection";
@@ -38,8 +40,35 @@ export default function StatCardForm() {
   const stats = useAppStore((s) => s.stats);
   const setStats = useAppStore((s) => s.setStats);
   const posterSize = useAppStore((s) => s.posterSize);
+  const gpxData = useAppStore((s) => s.gpxData);
 
   const [manualPace, setManualPace] = useState(false);
+  const [replayBusy, setReplayBusy] = useState(false);
+  const [replayError, setReplayError] = useState<string | null>(null);
+
+  /** Buat Summit Replay: simpan jalur+stat ke server, QR diarahkan ke URL-nya. */
+  const handleCreateReplay = async () => {
+    if (!gpxData || replayBusy) return;
+    setReplayBusy(true);
+    setReplayError(null);
+    try {
+      const res = await fetch("/api/replay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildSingleReplayPayload(stats, gpxData)),
+      });
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; id?: string; error?: string } | null;
+      if (!res.ok || !json?.ok || !json.id) {
+        setReplayError(json?.error ?? "Gagal membuat replay.");
+        return;
+      }
+      setStats({ qrCodeUrl: `${window.location.origin}${replayPath(json.id)}` });
+    } catch {
+      setReplayError("Gagal terhubung ke server.");
+    } finally {
+      setReplayBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (manualPace) return;
@@ -248,6 +277,30 @@ export default function StatCardForm() {
             className={inputClass}
           />
         </FieldRow>
+
+        {/* Summit Replay: QR menampilkan animasi pendakian, bukan link biasa. */}
+        <div className="ml-11 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCreateReplay}
+            disabled={!gpxData || replayBusy}
+            title="QR diarahkan ke halaman animasi pergerakan basecamp → puncak"
+            className="clay-chip flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#9c4a2c] transition-colors disabled:opacity-50 dark:text-[#e59a7c]"
+          >
+            {replayBusy ? <Loader2 size={13} className="animate-spin" /> : <Clapperboard size={13} />}
+            {isReplayUrl(stats.qrCodeUrl) ? "Buat ulang Summit Replay" : "Buat Summit Replay"}
+          </button>
+          {isReplayUrl(stats.qrCodeUrl) && (
+            <span className="text-xs text-emerald-700 dark:text-emerald-400">
+              QR = Summit Replay ✓{" "}
+              <a href={stats.qrCodeUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                buka
+              </a>
+            </span>
+          )}
+          {!gpxData && <span className="text-xs text-zinc-400">Upload GPX dulu</span>}
+        </div>
+        {replayError && <p className="ml-11 text-xs text-red-600 dark:text-red-400">{replayError}</p>}
 
         <div className="my-1 border-t border-dashed border-zinc-200 dark:border-zinc-800" />
 

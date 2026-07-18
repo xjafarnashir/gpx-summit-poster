@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Mountain, Plus, Route, Trash2, UploadCloud } from "lucide-react";
+import { Clapperboard, Loader2, Mountain, Plus, Route, Trash2, UploadCloud } from "lucide-react";
 import { useAppStore, MAX_COLLECTION_HIKES, MIN_COLLECTION_HIKES } from "@/lib/store";
 import { parseGpxFile } from "@/lib/gpxParser";
+import { buildCollectionReplayPayload, isReplayUrl, replayPath } from "@/lib/replay";
 import RouteBuilderModal from "@/components/RouteBuilderModal";
 import { compressImageToDataUrl } from "@/lib/image";
 import { DEFAULT_PHOTO_TRANSFORM } from "@/lib/photoTransform";
@@ -295,6 +296,34 @@ export default function CollectionEditor() {
   const totalDistance = hikes.reduce((sum, h) => sum + (h.distanceKm || 0), 0);
   const totalGain = hikes.reduce((sum, h) => sum + (h.elevationGainM || 0), 0);
 
+  // Summit Replay koleksi: satu QR memutar tiap gunung ber-GPX bergantian.
+  const replayEligible = hikes.filter((h) => h.gpxData && h.gpxData.points.length >= 2).length;
+  const [replayBusy, setReplayBusy] = useState(false);
+  const [replayError, setReplayError] = useState<string | null>(null);
+
+  const handleCreateReplay = async () => {
+    if (replayEligible === 0 || replayBusy) return;
+    setReplayBusy(true);
+    setReplayError(null);
+    try {
+      const res = await fetch("/api/replay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildCollectionReplayPayload(collection)),
+      });
+      const json = (await res.json().catch(() => null)) as { ok?: boolean; id?: string; error?: string } | null;
+      if (!res.ok || !json?.ok || !json.id) {
+        setReplayError(json?.error ?? "Gagal membuat replay.");
+        return;
+      }
+      setCollectionMeta({ qrCodeUrl: `${window.location.origin}${replayPath(json.id)}` });
+    } catch {
+      setReplayError("Gagal terhubung ke server.");
+    } finally {
+      setReplayBusy(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6 pb-4">
       {/* Ekspedisi */}
@@ -372,6 +401,32 @@ export default function CollectionEditor() {
             className={inputClass}
           />
         </label>
+        {/* Summit Replay: QR memutar animasi tiap gunung bergantian. */}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCreateReplay}
+            disabled={replayEligible === 0 || replayBusy}
+            title="QR diarahkan ke halaman animasi pergerakan basecamp → puncak per gunung"
+            className="clay-chip flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#9c4a2c] transition-colors disabled:opacity-50 dark:text-[#e59a7c]"
+          >
+            {replayBusy ? <Loader2 size={13} className="animate-spin" /> : <Clapperboard size={13} />}
+            {isReplayUrl(collection.qrCodeUrl) ? "Buat ulang Summit Replay" : "Buat Summit Replay"}
+          </button>
+          {isReplayUrl(collection.qrCodeUrl) ? (
+            <span className="text-xs text-emerald-700 dark:text-emerald-400">
+              QR = Summit Replay ({replayEligible} gunung) ✓{" "}
+              <a href={collection.qrCodeUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                buka
+              </a>
+            </span>
+          ) : replayEligible === 0 ? (
+            <span className="text-xs text-zinc-400">Upload GPX minimal 1 gunung dulu</span>
+          ) : (
+            <span className="text-xs text-zinc-400">{replayEligible} gunung ber-GPX ikut replay</span>
+          )}
+        </div>
+        {replayError && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{replayError}</p>}
         <div className="mt-3">
           <span className={labelClass}>Tema latar poster</span>
           <div className="mt-1.5 grid grid-cols-4 gap-2">
