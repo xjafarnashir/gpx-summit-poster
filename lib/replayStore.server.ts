@@ -73,8 +73,8 @@ export async function readReplay(id: string): Promise<ReplayData | null> {
     /* bukan di Netlify — coba Vercel */
   }
 
-  // 2. Vercel Blob (production Vercel).
-  if (process.env.VERCEL) {
+  // 2. Vercel Blob (bila token tersedia).
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
     const parsed = await readVercelBlob(id);
     if (parsed) return parsed;
   }
@@ -103,8 +103,8 @@ export async function writeReplay(id: string, data: ReplayData): Promise<void> {
     /* bukan di Netlify */
   }
 
-  // 2. Vercel Blob (production Vercel).
-  if (process.env.VERCEL) {
+  // 2. Vercel Blob (bila token tersedia).
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
     await writeVercelBlob(id, data);
     return;
   }
