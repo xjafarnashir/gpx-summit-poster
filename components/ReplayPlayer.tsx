@@ -5,7 +5,7 @@ import Link from "next/link";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { StyleSpecification } from "maplibre-gl";
-import { ArrowUpRight, Boxes, Mountain, Pause, Play, RotateCcw } from "lucide-react";
+import { ArrowUpRight, Boxes, LocateFixed, Mountain, Pause, Play, RotateCcw } from "lucide-react";
 import { haversineMeters } from "@/lib/geo";
 import { parseHmsToSeconds, secondsToHms } from "@/lib/statFormat";
 import type { ReplayData, ReplayHike } from "@/lib/replay";
@@ -163,6 +163,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   const [finishedAll, setFinishedAll] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [mode3d, setMode3d] = useState(true);
+  // Google-Maps-style: begitu user cubit/geser peta, follow berhenti & tombol
+  // "tengahkan" muncul untuk kembali mengikuti pendaki.
+  const [showRecenter, setShowRecenter] = useState(false);
 
   const hike = hikes[activeIdx];
   const geom = geoms[activeIdx];
@@ -181,6 +184,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mode3dRef = useRef(true);
   const followActiveRef = useRef(false);
+  const userPannedRef = useRef(false);
   const camRef = useRef({ lng: 0, lat: 0, bearing: 0, pitch: 0, zoom: 0, ele: 0 });
 
   useEffect(() => {
@@ -249,6 +253,24 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       maxPitch: 80,
       attributionControl: { compact: true },
     });
+    // Interaksi peta (cubit-zoom, geser, putar) aktif — default MapLibre,
+    // ditegaskan agar jelas. Zoom via roda mouse & pinch dua jari.
+    map.touchZoomRotate.enable();
+    map.touchZoomRotate.enableRotation();
+    map.dragPan.enable();
+    map.scrollZoom.enable();
+
+    // Gestur user (movestart/zoom/rotate dengan originalEvent) → hentikan
+    // auto-follow & tampilkan tombol "tengahkan". jumpTo kita TIDAK membawa
+    // originalEvent, jadi tak memicu ini.
+    const onUserGesture = (e: { originalEvent?: unknown }) => {
+      if (!e.originalEvent) return;
+      if (!mode3dRef.current) return;
+      userPannedRef.current = true;
+      followActiveRef.current = false;
+      setShowRecenter(true);
+    };
+    map.on("movestart", onUserGesture);
 
     // "style.load" (bukan "load"): tak menunggu tile — animasi selalu bisa mulai.
     let didSetup = false;
@@ -519,7 +541,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
       fRef.current = Math.min(1, fRef.current + (dt / BASE_DURATION_MS) * speedRef.current);
       renderFrame(fRef.current);
-      if (mode3dRef.current) updateFollowCamera(fRef.current);
+      if (mode3dRef.current && !userPannedRef.current) updateFollowCamera(fRef.current);
 
       if (fRef.current >= 1) {
         setPlaying(false);
@@ -571,10 +593,20 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
   /* ------------------------------- kontrol -------------------------------- */
 
+  const resumeFollow = () => {
+    userPannedRef.current = false;
+    followActiveRef.current = false;
+    setShowRecenter(false);
+    // Bila sedang pause, tengahkan segera; kalau memutar, frame berikut menyusul.
+    if (!playingRef.current) updateFollowCamera(fRef.current);
+  };
+
   const switchHike = (idx: number, autoplay: boolean) => {
     if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
     fRef.current = 0;
     setFinishedAll(false);
+    userPannedRef.current = false;
+    setShowRecenter(false);
     setActiveIdx(idx);
     setPlaying(autoplay);
   };
@@ -603,6 +635,8 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       /* terrain opsional */
     }
     followActiveRef.current = false;
+    userPannedRef.current = false;
+    setShowRecenter(false);
     if (!next || !playingRef.current) applyOverview(true);
   };
 
@@ -676,6 +710,19 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
             {speed}x
           </button>
         </div>
+
+        {/* tombol "Tengahkan" ala Google Maps — muncul saat user menggeser peta */}
+        {showRecenter && (
+          <button
+            type="button"
+            onClick={resumeFollow}
+            title="Tengahkan ke pendaki"
+            className="clay-btn absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#d97757] to-[#b8532f] px-4 py-2 text-xs font-semibold text-white"
+          >
+            <LocateFixed size={13} />
+            Tengahkan
+          </button>
+        )}
       </div>
 
       {/* bilah bawah tipis: elevasi + kontrol + statistik */}
