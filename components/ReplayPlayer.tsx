@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { ArrowUpRight, Mountain, Pause, Play, RotateCcw } from "lucide-react";
+import { ArrowUpRight, Boxes, Mountain, Pause, Play, RotateCcw } from "lucide-react";
 import { CARTO_STYLE_URL } from "@/lib/tileFetcher";
 import { buildMarkerElement } from "@/lib/mapIcons";
 import { haversineMeters } from "@/lib/geo";
@@ -14,15 +14,48 @@ import type { TrackPoint } from "@/types";
 
 /* ============================================================================
  * Pemutar Summit Replay (halaman publik hasil scan QR poster).
- * Marker bergerak dari basecamp ke puncak mengikuti jalur; garis progres
+ * Marker bergerak dari basecamp ke puncak mengikuti jalur di atas RELIEF 3D
+ * asli, kamera miring mengikuti pendaki (flyby ala Strava). Garis progres
  * memanjang; profil elevasi berjalan; jam menampilkan f × movingTime
- * (sintesis kecepatan-konstan — GPX tanpa timestamp).
+ * (sintesis kecepatan-konstan — GPX tanpa timestamp). Bisa dialihkan ke 2D.
  * ========================================================================== */
 
 const BASE_DURATION_MS = 35_000; // durasi animasi penuh pada speed 1x
 const SPEEDS = [1, 2, 4] as const;
 const FULL_SOURCE = "replay-full";
 const PROGRESS_SOURCE = "replay-progress";
+const DEM_SOURCE = "replay-dem";
+const HILLSHADE_LAYER = "replay-hillshade";
+
+/** DEM Terrarium AWS (gratis, CORS *) untuk relief 3D. */
+const TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
+const TERRAIN_EXAGGERATION = 1.7; // lebih dramatis supaya gunung/lembah menonjol
+const FOLLOW_PITCH = 74; // sangat miring → pandangan rendah menyusur medan
+const FOLLOW_ZOOM = 14.3; // dekat, khas chase-cam di belakang pendaki
+const OVERVIEW_PITCH_3D = 52; // overview tetap miring di mode 3D
+/** Chase-cam: kamera MEMANDANG titik ~sekian meter DI DEPAN pendaki, sehingga
+ *  pendaki berada di sepertiga bawah layar dan medan/puncak terbentang di
+ *  depannya — view "dari belakang" ala flyby Strava. */
+const CHASE_LOOKAT_M = 450;
+/** Arah hadap kamera dihitung dari titik sedikit di depan (anti-goyang). */
+const CHASE_BEARING_M = 140;
+
+/** Bearing (derajat, -180..180) dari a ke b, keduanya [lng, lat]. */
+function bearingDeg(a: [number, number], b: [number, number]): number {
+  const toR = (d: number) => (d * Math.PI) / 180;
+  const lat1 = toR(a[1]);
+  const lat2 = toR(b[1]);
+  const dLon = toR(b[0] - a[0]);
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return (Math.atan2(y, x) * 180) / Math.PI;
+}
+
+/** Interpolasi sudut dengan penanganan wrap 360°. */
+function lerpAngle(a: number, b: number, k: number): number {
+  const d = ((b - a + 540) % 360) - 180;
+  return a + d * k;
+}
 
 interface HikeGeom {
   coords: [number, number][]; // [lon, lat]
@@ -105,6 +138,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
   const [finishedAll, setFinishedAll] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const [mode3d, setMode3d] = useState(true);
 
   const hike = hikes[activeIdx];
   const geom = geoms[activeIdx];
@@ -123,12 +157,17 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   const speedRef = useRef<number>(1);
   const activeIdxRef = useRef(0);
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Kamera follow 3D: state kamera yang di-lerp tiap frame agar mulus.
+  const mode3dRef = useRef(true);
+  const followActiveRef = useRef(false);
+  const camRef = useRef({ lng: 0, lat: 0, bearing: 0, pitch: 0, zoom: 0 });
 
   useEffect(() => {
     playingRef.current = playing;
     speedRef.current = speed;
     activeIdxRef.current = activeIdx;
-  }, [playing, speed, activeIdx]);
+    mode3dRef.current = mode3d;
+  }, [playing, speed, activeIdx, mode3d]);
 
   /* ------------------------- profil elevasi statis ------------------------ */
 
@@ -192,17 +231,54 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       style: CARTO_STYLE_URL.voyager,
       center: geoms[0].coords[0],
       zoom: 12,
+      maxPitch: 80, // default MapLibre 60 → naikkan agar flyby lebih miring
       attributionControl: { compact: true },
     });
 
-    map.on("load", () => {
+    // Pakai "style.load" (bukan "load"): menyala saat style selesai di-parse,
+    // TIDAK menunggu tile basemap — kalau CDN tile lambat/terblokir, animasi +
+    // rute + terrain tetap jalan. `once`-style guard cegah setup ganda.
+    let didSetup = false;
+    const setup = () => {
+      if (didSetup) return;
+      didSetup = true;
+
+      // DEM + HILLSHADE dulu (best-effort) supaya relief benar-benar TERLIHAT
+      // (lembah/punggungan terbayang), bukan cuma geometri terangkat yang
+      // tampak datar di basemap vektor. Ditaruh sebelum garis rute → rute di
+      // atas relief. Kegagalan di sini tak boleh mematikan animasi.
+      try {
+        map.addSource(DEM_SOURCE, {
+          type: "raster-dem",
+          tiles: [TERRARIUM_URL],
+          encoding: "terrarium",
+          tileSize: 256,
+          maxzoom: 15,
+          attribution: "Terrain: Mapzen/Terrarium · AWS",
+        });
+        map.addLayer({
+          id: HILLSHADE_LAYER,
+          type: "hillshade",
+          source: DEM_SOURCE,
+          paint: {
+            "hillshade-exaggeration": 0.6,
+            "hillshade-shadow-color": "#3a2f27",
+            "hillshade-highlight-color": "#fff6e8",
+            "hillshade-accent-color": "#5a4a3a",
+          },
+        });
+      } catch {
+        /* hillshade opsional */
+      }
+
+      // CORE (garis) — di atas hillshade.
       map.addSource(FULL_SOURCE, { type: "geojson", data: emptyLine() });
       map.addLayer({
         id: FULL_SOURCE,
         type: "line",
         source: FULL_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#d97757", "line-width": 3, "line-opacity": 0.25 },
+        paint: { "line-color": "#d97757", "line-width": 3, "line-opacity": 0.3 },
       });
       map.addSource(PROGRESS_SOURCE, { type: "geojson", data: emptyLine() });
       map.addLayer({
@@ -210,10 +286,31 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
         type: "line",
         source: PROGRESS_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#d97757", "line-width": 4.5, "line-opacity": 0.95 },
+        paint: { "line-color": "#d6381d", "line-width": 5, "line-opacity": 0.97 },
       });
       setMapReady(true);
-    });
+
+      // Angkat relief jadi 3D + langit/kabut.
+      try {
+        if (mode3dRef.current) map.setTerrain({ source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION });
+        map.setSky({
+          "sky-color": "#0d1b2e",
+          "sky-horizon-blend": 0.6,
+          "horizon-color": "#e8b98a",
+          "horizon-fog-blend": 0.6,
+          "fog-color": "#d9c3a5",
+          "fog-ground-blend": 0.35,
+        });
+      } catch {
+        /* terrain/sky opsional — animasi tetap jalan dalam mode datar */
+      }
+    };
+
+    if (map.isStyleLoaded()) setup();
+    else {
+      map.on("style.load", setup);
+      map.on("load", setup); // jaring pengaman bila style.load terlewat
+    }
 
     mapRef.current = map;
     return () => {
@@ -231,7 +328,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       const map = mapRef.current;
       const h = hikes[activeIdxRef.current];
       const g = geoms[activeIdxRef.current];
-      if (!map || !map.isStyleLoaded()) return;
+      // Jangan pakai isStyleLoaded(): dengan terrain aktif ia bisa tetap false
+      // selama DEM dimuat, membuat animasi macet. Cukup cek source siap.
+      if (!map || !map.getSource(PROGRESS_SOURCE)) return;
 
       const { lngLat, ele, idx } = pointAtFraction(h, g, f);
 
@@ -272,6 +371,54 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     [geoms, hikes]
   );
 
+  /** Overview: seluruh jalur terframe (miring di 3D, tegak lurus di 2D). */
+  const applyOverview = useCallback(
+    (animated: boolean) => {
+      const map = mapRef.current;
+      if (!map) return;
+      const g = geoms[activeIdxRef.current];
+      const bounds = g.coords.reduce(
+        (b, c) => b.extend(c),
+        new maplibregl.LngLatBounds(g.coords[0], g.coords[0])
+      );
+      followActiveRef.current = false;
+      map.fitBounds(bounds, {
+        padding: 50,
+        pitch: mode3dRef.current ? OVERVIEW_PITCH_3D : 0,
+        bearing: 0,
+        duration: animated ? 900 : 0,
+      });
+    },
+    [geoms]
+  );
+
+  /** Kamera flyby: lerp mulus mengikuti pendaki + menghadap arah jalan (3D). */
+  const updateFollowCamera = useCallback(
+    (f: number) => {
+      const map = mapRef.current;
+      if (!map) return;
+      const g = geoms[activeIdxRef.current];
+      const h = hikes[activeIdxRef.current];
+      const cur = pointAtFraction(h, g, f).lngLat;
+      const ahead = pointAtFraction(h, g, Math.min(1, f + 0.03)).lngLat;
+      const targetBearing = bearingDeg(cur, ahead);
+
+      if (!followActiveRef.current) {
+        const c = map.getCenter();
+        camRef.current = { lng: c.lng, lat: c.lat, bearing: map.getBearing(), pitch: map.getPitch(), zoom: map.getZoom() };
+        followActiveRef.current = true;
+      }
+      const c = camRef.current;
+      c.lng += (cur[0] - c.lng) * 0.16;
+      c.lat += (cur[1] - c.lat) * 0.16;
+      c.bearing = lerpAngle(c.bearing, targetBearing, 0.05);
+      c.pitch += (FOLLOW_PITCH - c.pitch) * 0.08;
+      c.zoom += (FOLLOW_ZOOM - c.zoom) * 0.08;
+      map.jumpTo({ center: [c.lng, c.lat], bearing: c.bearing, pitch: c.pitch, zoom: c.zoom });
+    },
+    [geoms, hikes]
+  );
+
   /* --------------------- muat/hike aktif ke peta -------------------------- */
 
   useEffect(() => {
@@ -300,12 +447,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       hikerMarkerRef.current.setLngLat(geom.coords[0]);
     }
 
-    const bounds = geom.coords.reduce(
-      (b, c) => b.extend(c),
-      new maplibregl.LngLatBounds(geom.coords[0], geom.coords[0])
-    );
-    map.fitBounds(bounds, { padding: 46, duration: 800 });
-
+    applyOverview(true);
     drawStaticElevation();
     renderFrame(fRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -332,11 +474,14 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
         lastTs = ts;
         return;
       }
-      const dt = lastTs ? ts - lastTs : 0;
+      // Clamp: setelah tab sempat di-background (rAF pause), jangan biarkan
+      // dt raksasa membuat animasi melompat jauh saat kembali.
+      const dt = Math.min(lastTs ? ts - lastTs : 0, 100);
       lastTs = ts;
 
       fRef.current = Math.min(1, fRef.current + (dt / BASE_DURATION_MS) * speedRef.current);
       renderFrame(fRef.current);
+      if (mode3dRef.current) updateFollowCamera(fRef.current);
 
       if (fRef.current >= 1) {
         setPlaying(false);
@@ -350,6 +495,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           }, 1500);
         } else {
           setFinishedAll(true);
+          applyOverview(true); // tarik mundur, tampilkan seluruh jalur di relief
         }
       }
     };
@@ -359,12 +505,18 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       cancelAnimationFrame(raf);
       if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
     };
-  }, [hikes.length, renderFrame]);
+  }, [hikes.length, renderFrame, updateFollowCamera, applyOverview]);
 
-  // Autoplay begitu peta siap (kecuali preferensi reduced-motion → tampil akhir).
+  // Autoplay setelah relief benar-benar termuat (map "idle") supaya animasi
+  // tidak berjalan di atas dataran datar sebelum terrain tampak. Fallback timer
+  // menjamin tetap main bila idle tak kunjung datang.
   useEffect(() => {
     if (!mapReady) return;
-    const t = setTimeout(() => {
+    const map = mapRef.current;
+    let done = false;
+    const start = () => {
+      if (done) return;
+      done = true;
       if (reducedMotion) {
         fRef.current = 1;
         renderFrame(1);
@@ -372,8 +524,13 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       } else {
         setPlaying(true);
       }
-    }, 700);
-    return () => clearTimeout(t);
+    };
+    map?.once("idle", start);
+    const fallback = setTimeout(start, 4000);
+    return () => {
+      clearTimeout(fallback);
+      map?.off("idle", start);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady]);
 
@@ -399,6 +556,18 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   const handleRestart = () => switchHike(data.kind === "collection" ? 0 : activeIdx, true);
 
   const cycleSpeed = () => setSpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length]);
+
+  const toggle3d = () => {
+    const next = !mode3d;
+    setMode3d(next);
+    mode3dRef.current = next;
+    const map = mapRef.current;
+    if (!map) return;
+    map.setTerrain(next ? { source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION } : null);
+    followActiveRef.current = false;
+    // Saat pindah ke 2D, atau ke 3D sambil tidak memutar → kembali ke overview.
+    if (!next || !playingRef.current) applyOverview(true);
+  };
 
   /* --------------------------------- UI ----------------------------------- */
 
@@ -460,8 +629,17 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
         )}
 
         {/* peta */}
-        <div className="clay-card mt-3 overflow-hidden !rounded-2xl p-2">
+        <div className="clay-card relative mt-3 overflow-hidden !rounded-2xl p-2">
           <div ref={mapContainerRef} className="h-[45vh] min-h-[280px] w-full overflow-hidden rounded-xl" />
+          <button
+            type="button"
+            onClick={toggle3d}
+            title={mode3d ? "Beralih ke tampilan datar (2D)" : "Beralih ke relief 3D"}
+            className="clay-chip absolute right-4 top-4 z-10 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-700 dark:text-zinc-200"
+          >
+            <Boxes size={13} />
+            {mode3d ? "3D" : "2D"}
+          </button>
         </div>
 
         {/* profil elevasi + readout */}
