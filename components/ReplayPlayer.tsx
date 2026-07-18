@@ -354,9 +354,8 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
       setMapReady(true);
 
-      // Relief 3D + langit (best-effort).
+      // Langit best-effort (tak butuh terrain).
       try {
-        if (mode3dRef.current) map.setTerrain({ source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION });
         map.setSky({
           "sky-color": "#0d1b2e",
           "sky-horizon-blend": 0.6,
@@ -366,8 +365,25 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           "fog-ground-blend": 0.35,
         });
       } catch {
-        /* terrain/sky opsional */
+        /* sky opsional */
       }
+
+      // PENTING: terrain HANYA diaktifkan setelah tile DEM benar-benar termuat.
+      // Kalau terrain dinyalakan sebelum DEM ada, MapLibre me-render layar HITAM
+      // selama DEM dimuat (S3 dari Indonesia bisa lambat). Dengan digerbang di
+      // sini, satelit datar tampil dulu → tak pernah hitam; relief mengangkat
+      // begitu DEM siap.
+      const onDemLoaded = (e: maplibregl.MapSourceDataEvent) => {
+        if (e.sourceId !== DEM_SOURCE || !e.isSourceLoaded) return;
+        map.off("sourcedata", onDemLoaded);
+        if (!mode3dRef.current) return;
+        try {
+          map.setTerrain({ source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION });
+        } catch {
+          /* terrain opsional — tetap tampil satelit datar */
+        }
+      };
+      map.on("sourcedata", onDemLoaded);
     };
 
     if (map.isStyleLoaded()) setup();
@@ -630,7 +646,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     const map = mapRef.current;
     if (!map) return;
     try {
-      map.setTerrain(next ? { source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION } : null);
+      // Nyalakan terrain hanya bila DEM sudah termuat (hindari layar hitam).
+      const demReady = !!map.getSource(DEM_SOURCE) && map.isSourceLoaded(DEM_SOURCE);
+      map.setTerrain(next && demReady ? { source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION } : null);
     } catch {
       /* terrain opsional */
     }
