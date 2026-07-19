@@ -270,7 +270,6 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     // originalEvent, jadi tak memicu ini.
     const onUserGesture = (e: { originalEvent?: unknown }) => {
       if (!e.originalEvent) return;
-      if (!mode3dRef.current) return;
       userPannedRef.current = true;
       followActiveRef.current = false;
       setShowRecenter(true);
@@ -685,30 +684,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     };
   }, [hikes.length, renderFrame, updateFollowCamera, applyOverview]);
 
-  // Autoplay setelah peta idle (relief termuat) — fallback 4 dtk.
-  useEffect(() => {
-    if (!mapReady) return;
-    const map = mapRef.current;
-    let done = false;
-    const start = () => {
-      if (done) return;
-      done = true;
-      if (reducedMotion) {
-        fRef.current = 1;
-        renderFrame(1);
-        setFinishedAll(true);
-      } else {
-        setPlaying(true);
-      }
-    };
-    map?.once("idle", start);
-    const fallback = setTimeout(start, 4000);
-    return () => {
-      clearTimeout(fallback);
-      map?.off("idle", start);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady]);
+
 
   /* ------------------------------- kontrol -------------------------------- */
 
@@ -716,8 +692,12 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     userPannedRef.current = false;
     followActiveRef.current = false;
     setShowRecenter(false);
-    // Bila sedang pause, tengahkan segera; kalau memutar, frame berikut menyusul.
-    if (!playingRef.current) updateFollowCamera(fRef.current);
+    if (mode3dRef.current) {
+      // Bila sedang pause, tengahkan segera; kalau memutar, frame berikut menyusul.
+      if (!playingRef.current) updateFollowCamera(fRef.current);
+    } else {
+      applyOverview(true);
+    }
   };
 
   const switchHike = (idx: number, autoplay: boolean) => {
@@ -851,18 +831,6 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           </div>
         )}
 
-        {/* tombol "Tengahkan" ala Google Maps — muncul saat user menggeser peta */}
-        {showRecenter && (
-          <button
-            type="button"
-            onClick={resumeFollow}
-            title="Tengahkan ke pendaki"
-            className="clay-btn absolute bottom-3 right-3 z-10 flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#d97757] to-[#b8532f] px-4 py-2 text-xs font-semibold text-white"
-          >
-            <LocateFixed size={13} />
-            Tengahkan
-          </button>
-        )}
       </div>
 
       {/* bilah bawah tipis: elevasi + kontrol + statistik */}
@@ -897,6 +865,19 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
             className="clay-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-zinc-600 dark:text-zinc-300"
           >
             <RotateCcw size={13} />
+          </button>
+          <button
+            type="button"
+            onClick={resumeFollow}
+            title="Tengahkan ke pendaki"
+            className={`clay-btn flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition-all ${
+              showRecenter
+                ? "bg-gradient-to-r from-[#d97757] to-[#b8532f] text-white animate-pulse"
+                : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400 opacity-60"
+            }`}
+          >
+            <LocateFixed size={13} />
+            <span>Tengahkan</span>
           </button>
           <p className="min-w-0 flex-1 truncate text-right font-mono text-[10px] text-zinc-500 dark:text-zinc-400">
             {hike.stats.summitElevationM.toLocaleString("id-ID")} mdpl · {hike.stats.distanceKm.toFixed(1)} km · +
