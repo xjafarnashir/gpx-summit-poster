@@ -5,7 +5,7 @@ import Link from "next/link";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { StyleSpecification } from "maplibre-gl";
-import { ArrowUpRight, Boxes, Loader2, LocateFixed, Mountain, Pause, Play, RotateCcw } from "lucide-react";
+import { ArrowUpRight, Boxes, Loader2, LocateFixed, Mountain, Pause, Play, RotateCcw, Video } from "lucide-react";
 import { haversineMeters } from "@/lib/geo";
 import { parseHmsToSeconds, secondsToHms } from "@/lib/statFormat";
 import type { ReplayData, ReplayHike } from "@/lib/replay";
@@ -169,6 +169,11 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   // "tengahkan" muncul untuk kembali mengikuti pendaki.
   const [showRecenter, setShowRecenter] = useState(false);
   const [tilesLoaded, setTilesLoaded] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+
+  const isRecordingRef = useRef(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
   const mapReadyRef = useRef(false);
   const satTileLoadedRef = useRef(false);
 
@@ -258,7 +263,8 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       zoom: 12,
       maxPitch: 80,
       attributionControl: { compact: true },
-    });
+      preserveDrawingBuffer: true,
+    } as any);
     // Interaksi peta (cubit-zoom, geser, putar) aktif — default MapLibre,
     // ditegaskan agar jelas. Zoom via roda mouse & pinch dua jari.
     map.touchZoomRotate.enable();
@@ -480,6 +486,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       resizeObserver.disconnect();
       clearInterval(setupPoll);
       clearTimeout(errTimer);
+      if (isRecordingRef.current) {
+        stopRecording(false);
+      }
       map.remove();
       mapRef.current = null;
     };
@@ -684,16 +693,20 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
       if (fRef.current >= 1) {
         setPlaying(false);
-        const idx = activeIdxRef.current;
-        if (idx < hikes.length - 1) {
-          advanceTimerRef.current = setTimeout(() => {
-            fRef.current = 0;
-            setActiveIdx(idx + 1);
-            setPlaying(true);
-          }, 1500);
+        if (isRecordingRef.current) {
+          stopRecording(true);
         } else {
-          setFinishedAll(true);
-          applyOverview(true); // tarik mundur: seluruh jalur di atas relief
+          const idx = activeIdxRef.current;
+          if (idx < hikes.length - 1) {
+            advanceTimerRef.current = setTimeout(() => {
+              fRef.current = 0;
+              setActiveIdx(idx + 1);
+              setPlaying(true);
+            }, 1500);
+          } else {
+            setFinishedAll(true);
+            applyOverview(true); // tarik mundur: seluruh jalur di atas relief
+          }
         }
       }
     };
@@ -706,6 +719,94 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   }, [hikes.length, renderFrame, updateFollowCamera, applyOverview]);
 
 
+
+  function stopRecording(save = true) {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      if (!save) {
+        recorder.ondataavailable = null;
+        recorder.onstop = null;
+      }
+      recorder.stop();
+    }
+    mediaRecorderRef.current = null;
+    isRecordingRef.current = false;
+    setIsRecording(false);
+  }
+
+  function startRecording() {
+    const map = mapRef.current;
+    const canvas = map?.getCanvas();
+    if (!map || !canvas) return;
+
+    if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
+    fRef.current = 0;
+    setFinishedAll(false);
+    userPannedRef.current = false;
+    followActiveRef.current = false;
+    setShowRecenter(false);
+    hikeChangedRef.current = true;
+    setPlaying(true);
+
+    try {
+      const stream = (canvas as any).captureStream 
+        ? (canvas as any).captureStream(30) 
+        : (canvas as any).mozCaptureStream 
+          ? (canvas as any).mozCaptureStream(30)
+          : null;
+      if (!stream) {
+        throw new Error("Canvas stream capture not supported");
+      }
+
+      const getSupportedMimeType = () => {
+        const types = [
+          "video/mp4;codecs=h264",
+          "video/webm;codecs=h264",
+          "video/webm;codecs=vp9",
+          "video/webm",
+        ];
+        for (const type of types) {
+          if (MediaRecorder.isTypeSupported(type)) return type;
+        }
+        return "";
+      };
+
+      const mimeType = getSupportedMimeType();
+      recordedChunksRef.current = [];
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 5000000,
+      });
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          recordedChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        const hikeName = hikes[activeIdxRef.current]?.name || "hike";
+        a.download = `replay-${hikeName.toLowerCase().replace(/\s+/g, "-")}.${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      isRecordingRef.current = true;
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Failed to start recording:", err);
+      alert("Browser Anda tidak mendukung perekaman video canvas.");
+    }
+  }
 
   /* ------------------------------- kontrol -------------------------------- */
 
@@ -722,6 +823,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   };
 
   const switchHike = (idx: number, autoplay: boolean) => {
+    if (isRecordingRef.current) {
+      stopRecording(false);
+    }
     if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
     fRef.current = 0;
     setFinishedAll(false);
@@ -733,6 +837,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   };
 
   const handlePlayPause = () => {
+    if (isRecordingRef.current) {
+      stopRecording(true);
+    }
     if (fRef.current >= 1 && !playing) {
       fRef.current = 0;
       setFinishedAll(false);
@@ -833,6 +940,20 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           </button>
           <button type="button" onClick={cycleSpeed} title="Kecepatan animasi" className={`${overlayChip} font-mono`}>
             {speed}x
+          </button>
+          <button
+            type="button"
+            disabled={!mapReady || !tilesLoaded}
+            onClick={isRecording ? () => stopRecording(true) : startRecording}
+            title={isRecording ? "Hentikan dan simpan rekaman" : "Rekam video perjalanan"}
+            className={`${overlayChip} flex items-center gap-1 transition-all ${
+              isRecording
+                ? "bg-red-600/90 text-white animate-pulse"
+                : "bg-black/45 text-white/80 hover:bg-black/60 disabled:opacity-40"
+            }`}
+          >
+            <Video size={11} className={isRecording ? "animate-bounce" : ""} />
+            {isRecording ? "Merekam…" : "Rekam MP4/WebM"}
           </button>
         </div>
 
