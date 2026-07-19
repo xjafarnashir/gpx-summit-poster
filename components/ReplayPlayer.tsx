@@ -5,7 +5,7 @@ import Link from "next/link";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { StyleSpecification } from "maplibre-gl";
-import { ArrowUpRight, Boxes, LocateFixed, Mountain, Pause, Play, RotateCcw } from "lucide-react";
+import { ArrowUpRight, Boxes, Loader2, LocateFixed, Mountain, Pause, Play, RotateCcw } from "lucide-react";
 import { haversineMeters } from "@/lib/geo";
 import { parseHmsToSeconds, secondsToHms } from "@/lib/statFormat";
 import type { ReplayData, ReplayHike } from "@/lib/replay";
@@ -168,6 +168,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   // Google-Maps-style: begitu user cubit/geser peta, follow berhenti & tombol
   // "tengahkan" muncul untuk kembali mengikuti pendaki.
   const [showRecenter, setShowRecenter] = useState(false);
+  const [tilesLoaded, setTilesLoaded] = useState(false);
   const mapReadyRef = useRef(false);
   const satTileLoadedRef = useRef(false);
 
@@ -615,6 +616,8 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
+    setTilesLoaded(false);
+
     hikeChangedRef.current = true; // Tandai hike berubah agar kamera lompat instan
     (map.getSource(FULL_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(lineTo(geom.coords));
     (map.getSource(PROGRESS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(emptyLine());
@@ -626,6 +629,24 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     applyOverview(true);
     drawStaticElevation();
     renderFrame(fRef.current);
+
+    let done = false;
+    const onIdle = () => {
+      if (done) return;
+      done = true;
+      setTilesLoaded(true);
+    };
+
+    map.once("idle", onIdle);
+    const safetyTimer = setTimeout(() => {
+      onIdle();
+      map.off("idle", onIdle);
+    }, 4000);
+
+    return () => {
+      clearTimeout(safetyTimer);
+      map.off("idle", onIdle);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady, activeIdx]);
 
@@ -831,6 +852,14 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           </div>
         )}
 
+        {mapReady && !tilesLoaded && !playing && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <span className="flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-xs font-medium text-white backdrop-blur-sm animate-pulse">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>Memuat citra & relief 3D…</span>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* bilah bawah tipis: elevasi + kontrol + statistik */}
@@ -852,11 +881,22 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
         <div className="mt-1.5 flex items-center gap-2">
           <button
             type="button"
+            disabled={!playing && !tilesLoaded}
             onClick={handlePlayPause}
             title={playing ? "Pause" : finishedAll ? "Putar lagi" : "Putar"}
-            className="clay-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-[#d97757] to-[#b8532f] text-white"
+            className={`clay-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all ${
+              !playing && !tilesLoaded
+                ? "bg-zinc-400 dark:bg-zinc-700 opacity-50 cursor-not-allowed"
+                : "bg-gradient-to-r from-[#d97757] to-[#b8532f]"
+            }`}
           >
-            {playing ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
+            {playing ? (
+              <Pause size={14} />
+            ) : !tilesLoaded ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play size={14} className="ml-0.5" />
+            )}
           </button>
           <button
             type="button"
