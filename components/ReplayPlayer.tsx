@@ -721,6 +721,26 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     const canvas = map?.getCanvas();
     if (!map || !canvas || isRenderingRef.current) return;
 
+    const originalSpeed = speed;
+    
+    // Helper waitMapLoaded lokal untuk memastikan tiles & style ter-load penuh
+    const waitMapLoaded = () => {
+      return new Promise<void>((resolve) => {
+        setTimeout(() => {
+          let attempts = 0;
+          const check = () => {
+            attempts++;
+            if (map.areTilesLoaded() || attempts > 30) {
+              resolve();
+            } else {
+              setTimeout(check, 100);
+            }
+          };
+          check();
+        }, 150);
+      });
+    };
+
     isRenderingRef.current = true;
     setIsRendering(true);
     setRenderProgress(0);
@@ -728,134 +748,144 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     const g = geoms[activeIdxRef.current];
     const h = hikes[activeIdxRef.current];
 
-    // ——— Fase 1: Pre-load tile di sepanjang rute ———
-    const PRELOAD_STEPS = 40;
-    for (let i = 0; i <= PRELOAD_STEPS; i++) {
-      if (!isRenderingRef.current) return; // dibatalkan
-      const f = i / PRELOAD_STEPS;
-      const { lngLat: cur } = pointAtFraction(h, g, f);
-      const fBear = Math.min(1, f + CHASE_BEARING_M / g.totalDist);
-      const targetBearing = bearingDeg(cur, pointAtFraction(h, g, fBear).lngLat);
-      const fLookAt = Math.min(1, f + CHASE_LOOKAT_M / g.totalDist);
-      const lookAt = pointAtFraction(h, g, fLookAt).lngLat;
+    try {
+      // ——— Fase 1: Pre-load tile di sepanjang rute (80 langkah agar overlap sempurna) ———
+      const PRELOAD_STEPS = 80;
+      for (let i = 0; i <= PRELOAD_STEPS; i++) {
+        if (!isRenderingRef.current) return; // dibatalkan
+        const f = i / PRELOAD_STEPS;
+        const { lngLat: cur } = pointAtFraction(h, g, f);
+        const fBear = Math.min(1, f + CHASE_BEARING_M / g.totalDist);
+        const targetBearing = bearingDeg(cur, pointAtFraction(h, g, fBear).lngLat);
+        const fLookAt = Math.min(1, f + CHASE_LOOKAT_M / g.totalDist);
+        const lookAt = pointAtFraction(h, g, fLookAt).lngLat;
 
-      map.jumpTo({
-        center: [lookAt[0], lookAt[1]],
-        bearing: targetBearing,
-        pitch: FOLLOW_PITCH,
-        zoom: FOLLOW_ZOOM,
+        map.jumpTo({
+          center: [lookAt[0], lookAt[1]],
+          bearing: targetBearing,
+          pitch: FOLLOW_PITCH,
+          zoom: FOLLOW_ZOOM,
+        });
+
+        await waitMapLoaded();
+        setRenderProgress(Math.round((i / PRELOAD_STEPS) * 50));
+      }
+
+      if (!isRenderingRef.current) return;
+
+      // ——— Fase 2: Reset kamera ke awal dan pastikan loading penuh ———
+      fRef.current = 0;
+      hikeChangedRef.current = true;
+      followActiveRef.current = false;
+      userPannedRef.current = false;
+      setShowRecenter(false);
+      setFinishedAll(false);
+      renderFrame(0);
+      if (mode3dRef.current) updateFollowCamera(0);
+
+      await waitMapLoaded();
+      setRenderProgress(55);
+
+      if (!isRenderingRef.current) return;
+
+      // ——— Fase 3: Mulai rekam dengan kecepatan 1x agar durasi pas dan smooth ———
+      setSpeed(1);
+      speedRef.current = 1;
+
+      const stream = (canvas as any).captureStream
+        ? (canvas as any).captureStream(30)
+        : (canvas as any).mozCaptureStream
+          ? (canvas as any).mozCaptureStream(30)
+          : null;
+      if (!stream) {
+        alert("Browser Anda tidak mendukung perekaman video canvas.");
+        return;
+      }
+
+      const mimeType = [
+        "video/mp4;codecs=h264",
+        "video/webm;codecs=h264",
+        "video/webm;codecs=vp9",
+        "video/webm",
+      ].find((t) => MediaRecorder.isTypeSupported(t)) || "";
+
+      const chunks: Blob[] = [];
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 8000000, // 8 Mbps untuk visual premium
       });
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+
+      recorder.start();
+
+      // Mulai animasi
+      playingRef.current = true;
+      setPlaying(true);
+
+      // Poll progress dan tunggu selesai
+      const progressPoll = setInterval(() => {
+        setRenderProgress(55 + Math.round(fRef.current * 45));
+      }, 200);
 
       await new Promise<void>((resolve) => {
-        let done = false;
-        const finish = () => { if (!done) { done = true; resolve(); } };
-        map.once("idle", finish);
-        setTimeout(finish, 3000);
+        const check = setInterval(() => {
+          if (fRef.current >= 1 || !isRenderingRef.current) {
+            clearInterval(check);
+            resolve();
+          }
+        }, 100);
       });
 
-      setRenderProgress(Math.round((i / PRELOAD_STEPS) * 50));
-    }
+      clearInterval(progressPoll);
+      setPlaying(false);
+      playingRef.current = false;
 
-    if (!isRenderingRef.current) return;
+      if (!isRenderingRef.current) {
+        if (recorder.state !== "inactive") recorder.stop();
+        return;
+      }
 
-    // ——— Fase 2: Reset kamera ke awal ———
-    fRef.current = 0;
-    hikeChangedRef.current = true;
-    followActiveRef.current = false;
-    userPannedRef.current = false;
-    setShowRecenter(false);
-    setFinishedAll(false);
-    renderFrame(0);
-    if (mode3dRef.current) updateFollowCamera(0);
+      setRenderProgress(100);
 
-    await new Promise<void>((resolve) => {
-      let done = false;
-      const finish = () => { if (!done) { done = true; resolve(); } };
-      map.once("idle", finish);
-      setTimeout(finish, 2000);
-    });
+      // Hentikan recorder dan download
+      await new Promise<void>((resolve) => {
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: mimeType });
+          const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          const hikeName = hikes[activeIdxRef.current]?.name || "hike";
+          a.download = `replay-${hikeName.toLowerCase().replace(/\s+/g, "-")}.${ext}`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          resolve();
+        };
+        recorder.stop();
+      });
 
-    setRenderProgress(55);
-
-    // ——— Fase 3: Mulai rekam ———
-    const stream = (canvas as any).captureStream
-      ? (canvas as any).captureStream(30)
-      : (canvas as any).mozCaptureStream
-        ? (canvas as any).mozCaptureStream(30)
-        : null;
-    if (!stream) {
-      alert("Browser Anda tidak mendukung perekaman video canvas.");
+    } catch (err) {
+      console.error("Rendering failed:", err);
+    } finally {
+      // Kembalikan ke pengaturan semula
       isRenderingRef.current = false;
       setIsRendering(false);
-      return;
+      setRenderProgress(0);
+      setPlaying(false);
+      playingRef.current = false;
+      
+      setSpeed(originalSpeed);
+      speedRef.current = originalSpeed;
+
+      // Kembalikan peta ke overview
+      fRef.current = 0;
+      renderFrame(0);
+      applyOverview(true);
     }
-
-    const mimeType = [
-      "video/mp4;codecs=h264",
-      "video/webm;codecs=h264",
-      "video/webm;codecs=vp9",
-      "video/webm",
-    ].find((t) => MediaRecorder.isTypeSupported(t)) || "";
-
-    const chunks: Blob[] = [];
-    const recorder = new MediaRecorder(stream, {
-      mimeType,
-      videoBitsPerSecond: 8000000,
-    });
-    recorder.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) chunks.push(e.data);
-    };
-
-    recorder.start();
-
-    // Mulai animasi — biarkan loop tick biasa yang menjalankannya
-    playingRef.current = true;
-    setPlaying(true);
-
-    // Poll progress dan tunggu selesai
-    const progressPoll = setInterval(() => {
-      setRenderProgress(55 + Math.round(fRef.current * 45));
-    }, 200);
-
-    await new Promise<void>((resolve) => {
-      const check = setInterval(() => {
-        if (fRef.current >= 1 || !isRenderingRef.current) {
-          clearInterval(check);
-          resolve();
-        }
-      }, 100);
-    });
-
-    clearInterval(progressPoll);
-    setRenderProgress(100);
-
-    // Hentikan recorder dan download
-    await new Promise<void>((resolve) => {
-      recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mimeType });
-        const ext = mimeType.includes("mp4") ? "mp4" : "webm";
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        const hikeName = hikes[activeIdxRef.current]?.name || "hike";
-        a.download = `replay-${hikeName.toLowerCase().replace(/\s+/g, "-")}.${ext}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        resolve();
-      };
-      recorder.stop();
-    });
-
-    isRenderingRef.current = false;
-    setIsRendering(false);
-    setRenderProgress(0);
-
-    // Kembalikan tampilan ke overview
-    fRef.current = 0;
-    renderFrame(0);
-    applyOverview(true);
   }
 
   /* ------------------------------- kontrol -------------------------------- */
