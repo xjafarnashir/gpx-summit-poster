@@ -5,7 +5,7 @@ import Link from "next/link";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { StyleSpecification } from "maplibre-gl";
-import { ArrowUpRight, Boxes, Loader2, LocateFixed, Mountain, Pause, Play, RotateCcw, Video } from "lucide-react";
+import { ArrowUpRight, Boxes, Download, Loader2, LocateFixed, Mountain, Pause, Play, RotateCcw } from "lucide-react";
 import { haversineMeters } from "@/lib/geo";
 import { parseHmsToSeconds, secondsToHms } from "@/lib/statFormat";
 import type { ReplayData, ReplayHike } from "@/lib/replay";
@@ -169,11 +169,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   // "tengahkan" muncul untuk kembali mengikuti pendaki.
   const [showRecenter, setShowRecenter] = useState(false);
   const [tilesLoaded, setTilesLoaded] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-
-  const isRecordingRef = useRef(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordedChunksRef = useRef<Blob[]>([]);
+  const [isRendering, setIsRendering] = useState(false);
+  const [renderProgress, setRenderProgress] = useState(0);
+  const isRenderingRef = useRef(false);
   const mapReadyRef = useRef(false);
   const satTileLoadedRef = useRef(false);
 
@@ -486,9 +484,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       resizeObserver.disconnect();
       clearInterval(setupPoll);
       clearTimeout(errTimer);
-      if (isRecordingRef.current) {
-        stopRecording(false);
-      }
+      isRenderingRef.current = false;
       map.remove();
       mapRef.current = null;
     };
@@ -693,8 +689,8 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
       if (fRef.current >= 1) {
         setPlaying(false);
-        if (isRecordingRef.current) {
-          stopRecording(true);
+        if (isRenderingRef.current) {
+          // Rendering selesai — jangan auto-advance, downloadVideo akan handle.
         } else {
           const idx = activeIdxRef.current;
           if (idx < hikes.length - 1) {
@@ -705,7 +701,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
             }, 1500);
           } else {
             setFinishedAll(true);
-            applyOverview(true); // tarik mundur: seluruh jalur di atas relief
+            applyOverview(true);
           }
         }
       }
@@ -720,72 +716,123 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
 
 
-  function stopRecording(save = true) {
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== "inactive") {
-      if (!save) {
-        recorder.ondataavailable = null;
-        recorder.onstop = null;
-      }
-      recorder.stop();
-    }
-    mediaRecorderRef.current = null;
-    isRecordingRef.current = false;
-    setIsRecording(false);
-  }
-
-  function startRecording() {
+  async function downloadVideo() {
     const map = mapRef.current;
     const canvas = map?.getCanvas();
-    if (!map || !canvas) return;
+    if (!map || !canvas || isRenderingRef.current) return;
 
-    if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
-    fRef.current = 0;
-    setFinishedAll(false);
-    userPannedRef.current = false;
-    followActiveRef.current = false;
-    setShowRecenter(false);
-    hikeChangedRef.current = true;
-    setPlaying(true);
+    isRenderingRef.current = true;
+    setIsRendering(true);
+    setRenderProgress(0);
 
-    try {
-      const stream = (canvas as any).captureStream 
-        ? (canvas as any).captureStream(30) 
-        : (canvas as any).mozCaptureStream 
-          ? (canvas as any).mozCaptureStream(30)
-          : null;
-      if (!stream) {
-        throw new Error("Canvas stream capture not supported");
-      }
+    const g = geoms[activeIdxRef.current];
+    const h = hikes[activeIdxRef.current];
 
-      const getSupportedMimeType = () => {
-        const types = [
-          "video/mp4;codecs=h264",
-          "video/webm;codecs=h264",
-          "video/webm;codecs=vp9",
-          "video/webm",
-        ];
-        for (const type of types) {
-          if (MediaRecorder.isTypeSupported(type)) return type;
-        }
-        return "";
-      };
+    // ——— Fase 1: Pre-load tile di sepanjang rute ———
+    const PRELOAD_STEPS = 40;
+    for (let i = 0; i <= PRELOAD_STEPS; i++) {
+      if (!isRenderingRef.current) return; // dibatalkan
+      const f = i / PRELOAD_STEPS;
+      const { lngLat: cur } = pointAtFraction(h, g, f);
+      const fBear = Math.min(1, f + CHASE_BEARING_M / g.totalDist);
+      const targetBearing = bearingDeg(cur, pointAtFraction(h, g, fBear).lngLat);
+      const fLookAt = Math.min(1, f + CHASE_LOOKAT_M / g.totalDist);
+      const lookAt = pointAtFraction(h, g, fLookAt).lngLat;
 
-      const mimeType = getSupportedMimeType();
-      recordedChunksRef.current = [];
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        videoBitsPerSecond: 5000000,
+      map.jumpTo({
+        center: [lookAt[0], lookAt[1]],
+        bearing: targetBearing,
+        pitch: FOLLOW_PITCH,
+        zoom: FOLLOW_ZOOM,
       });
 
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          recordedChunksRef.current.push(e.data);
-        }
-      };
+      await new Promise<void>((resolve) => {
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        map.once("idle", finish);
+        setTimeout(finish, 3000);
+      });
 
+      setRenderProgress(Math.round((i / PRELOAD_STEPS) * 50));
+    }
+
+    if (!isRenderingRef.current) return;
+
+    // ——— Fase 2: Reset kamera ke awal ———
+    fRef.current = 0;
+    hikeChangedRef.current = true;
+    followActiveRef.current = false;
+    userPannedRef.current = false;
+    setShowRecenter(false);
+    setFinishedAll(false);
+    renderFrame(0);
+    if (mode3dRef.current) updateFollowCamera(0);
+
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      map.once("idle", finish);
+      setTimeout(finish, 2000);
+    });
+
+    setRenderProgress(55);
+
+    // ——— Fase 3: Mulai rekam ———
+    const stream = (canvas as any).captureStream
+      ? (canvas as any).captureStream(30)
+      : (canvas as any).mozCaptureStream
+        ? (canvas as any).mozCaptureStream(30)
+        : null;
+    if (!stream) {
+      alert("Browser Anda tidak mendukung perekaman video canvas.");
+      isRenderingRef.current = false;
+      setIsRendering(false);
+      return;
+    }
+
+    const mimeType = [
+      "video/mp4;codecs=h264",
+      "video/webm;codecs=h264",
+      "video/webm;codecs=vp9",
+      "video/webm",
+    ].find((t) => MediaRecorder.isTypeSupported(t)) || "";
+
+    const chunks: Blob[] = [];
+    const recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: 8000000,
+    });
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) chunks.push(e.data);
+    };
+
+    recorder.start();
+
+    // Mulai animasi — biarkan loop tick biasa yang menjalankannya
+    playingRef.current = true;
+    setPlaying(true);
+
+    // Poll progress dan tunggu selesai
+    const progressPoll = setInterval(() => {
+      setRenderProgress(55 + Math.round(fRef.current * 45));
+    }, 200);
+
+    await new Promise<void>((resolve) => {
+      const check = setInterval(() => {
+        if (fRef.current >= 1 || !isRenderingRef.current) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 100);
+    });
+
+    clearInterval(progressPoll);
+    setRenderProgress(100);
+
+    // Hentikan recorder dan download
+    await new Promise<void>((resolve) => {
       recorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        const blob = new Blob(chunks, { type: mimeType });
         const ext = mimeType.includes("mp4") ? "mp4" : "webm";
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -796,16 +843,19 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        resolve();
       };
+      recorder.stop();
+    });
 
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      isRecordingRef.current = true;
-      setIsRecording(true);
-    } catch (err) {
-      console.error("Failed to start recording:", err);
-      alert("Browser Anda tidak mendukung perekaman video canvas.");
-    }
+    isRenderingRef.current = false;
+    setIsRendering(false);
+    setRenderProgress(0);
+
+    // Kembalikan tampilan ke overview
+    fRef.current = 0;
+    renderFrame(0);
+    applyOverview(true);
   }
 
   /* ------------------------------- kontrol -------------------------------- */
@@ -823,22 +873,24 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   };
 
   const switchHike = (idx: number, autoplay: boolean) => {
-    if (isRecordingRef.current) {
-      stopRecording(false);
+    if (isRenderingRef.current) {
+      isRenderingRef.current = false;
+      setIsRendering(false);
     }
     if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
     fRef.current = 0;
     setFinishedAll(false);
     userPannedRef.current = false;
     setShowRecenter(false);
-    hikeChangedRef.current = true; // Tandai hike berubah
+    hikeChangedRef.current = true;
     setActiveIdx(idx);
     setPlaying(autoplay);
   };
 
   const handlePlayPause = () => {
-    if (isRecordingRef.current) {
-      stopRecording(true);
+    if (isRenderingRef.current) {
+      isRenderingRef.current = false;
+      setIsRendering(false);
     }
     if (fRef.current >= 1 && !playing) {
       fRef.current = 0;
@@ -932,7 +984,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           )}
         </div>
 
-        {/* toggle 3D + speed di kanan-atas peta */}
+        {/* toggle 3D + speed + download di kanan-atas peta */}
         <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-1.5">
           <button type="button" onClick={toggle3d} title="Ganti mode tampilan" className={`${overlayChip} flex items-center gap-1`}>
             <Boxes size={11} />
@@ -943,19 +995,45 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           </button>
           <button
             type="button"
-            disabled={!mapReady || !tilesLoaded}
-            onClick={isRecording ? () => stopRecording(true) : startRecording}
-            title={isRecording ? "Hentikan dan simpan rekaman" : "Rekam video perjalanan"}
-            className={`${overlayChip} flex items-center gap-1 transition-all ${
-              isRecording
-                ? "bg-red-600/90 text-white animate-pulse"
-                : "bg-black/45 text-white/80 hover:bg-black/60 disabled:opacity-40"
-            }`}
+            disabled={!mapReady || !tilesLoaded || isRendering}
+            onClick={() => downloadVideo()}
+            title="Render & download video perjalanan"
+            className={`${overlayChip} flex items-center gap-1 disabled:opacity-40`}
           >
-            <Video size={11} className={isRecording ? "animate-bounce" : ""} />
-            {isRecording ? "Merekam…" : "Rekam MP4/WebM"}
+            <Download size={11} />
+            Download Video
           </button>
         </div>
+
+        {/* Overlay progress rendering video */}
+        {isRendering && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-3 rounded-2xl bg-black/60 px-8 py-6 backdrop-blur-md">
+              <Loader2 className="h-8 w-8 animate-spin text-[#d97757]" />
+              <p className="text-sm font-semibold text-white">
+                {renderProgress < 50
+                  ? "Memuat pemandangan sepanjang rute…"
+                  : renderProgress < 100
+                    ? "Merender video perjalanan…"
+                    : "Menyiapkan unduhan…"}
+              </p>
+              <div className="h-2 w-48 overflow-hidden rounded-full bg-white/20">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-[#d97757] to-[#b8532f] transition-all duration-300"
+                  style={{ width: `${renderProgress}%` }}
+                />
+              </div>
+              <span className="font-mono text-xs text-white/70">{renderProgress}%</span>
+              <button
+                type="button"
+                onClick={() => { isRenderingRef.current = false; setIsRendering(false); setPlaying(false); }}
+                className="mt-1 rounded-full bg-white/10 px-4 py-1.5 text-xs text-white/80 hover:bg-white/20 transition-colors"
+              >
+                Batalkan
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* status: memuat / error peta — jangan biarkan hitam senyap */}
         {!mapReady && !mapError && (
