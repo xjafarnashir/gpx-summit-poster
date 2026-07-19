@@ -14,10 +14,11 @@ import type { TrackPoint } from "@/types";
 /** Basemap CITRA SATELIT (Esri World Imagery, gratis, CORS *). Dipilih karena:
  *  (1) raster → jauh lebih andal dimuat daripada tile vektor yang kerap kosong,
  *  (2) di-drape ke terrain 3D → gunung/lembah tampak nyata ala FATMAP/Strava. */
+const SAT_SOURCE = "sat";
 const SATELLITE_STYLE: StyleSpecification = {
   version: 8,
   sources: {
-    sat: {
+    [SAT_SOURCE]: {
       type: "raster",
       tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
       tileSize: 256,
@@ -25,7 +26,7 @@ const SATELLITE_STYLE: StyleSpecification = {
       attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
     },
   },
-  layers: [{ id: "sat", type: "raster", source: "sat" }],
+  layers: [{ id: SAT_SOURCE, type: "raster", source: SAT_SOURCE }],
 };
 
 /* ============================================================================
@@ -52,8 +53,8 @@ const DEM_SOURCE = "replay-dem";
 
 /** DEM Terrarium AWS (gratis, CORS *) untuk relief 3D. */
 const TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
-const TERRAIN_EXAGGERATION = 1.7;
-const FOLLOW_PITCH = 68; // miring khas flyby, masih nyaman diikuti
+const TERRAIN_EXAGGERATION = 1.7; // Kembali ke 1.7 agar relief pegunungan tampak nyata ala Strava
+const FOLLOW_PITCH = 54; // miring khas flyby, mencegah kamera melihat void ubin di cakrawala
 const FOLLOW_ZOOM = 14.1;
 const OVERVIEW_PITCH_3D = 52;
 /** Kamera memandang titik ~sekian meter DI DEPAN pendaki → view dari belakang;
@@ -281,21 +282,6 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       if (didSetup) return;
       didSetup = true;
 
-      // DEM untuk mengangkat terrain 3D (best-effort). Tak perlu hillshade —
-      // citra satelit sudah menampilkan relief medan.
-      try {
-        map.addSource(DEM_SOURCE, {
-          type: "raster-dem",
-          tiles: [TERRARIUM_URL],
-          encoding: "terrarium",
-          tileSize: 256,
-          maxzoom: 15,
-          attribution: "Terrain: Mapzen/Terrarium · AWS",
-        });
-      } catch {
-        /* DEM opsional */
-      }
-
       // Garis rute — kontras di atas citra satelit gelap.
       map.addSource(FULL_SOURCE, { type: "geojson", data: emptyLine() });
       map.addLayer({
@@ -359,36 +345,76 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       setMapReady(true);
       setMapError(null);
 
-      // Langit best-effort (tak butuh terrain).
-      try {
-        map.setSky({
-          "sky-color": "#0d1b2e",
-          "sky-horizon-blend": 0.6,
-          "horizon-color": "#e8b98a",
-          "horizon-fog-blend": 0.6,
-          "fog-color": "#d9c3a5",
-          "fog-ground-blend": 0.35,
-        });
-      } catch {
-        /* sky opsional */
-      }
+      // Pastikan ukuran canvas sinkron dengan container
+      map.resize();
 
-      // PENTING: terrain HANYA diaktifkan setelah tile DEM benar-benar termuat.
-      // Kalau terrain dinyalakan sebelum DEM ada, MapLibre me-render layar HITAM
-      // selama DEM dimuat (S3 dari Indonesia bisa lambat). Dengan digerbang di
-      // sini, satelit datar tampil dulu → tak pernah hitam; relief mengangkat
-      // begitu DEM siap.
-      const onDemLoaded = (e: maplibregl.MapSourceDataEvent) => {
-        if (e.sourceId !== DEM_SOURCE || !e.isSourceLoaded) return;
-        map.off("sourcedata", onDemLoaded);
-        if (!mode3dRef.current) return;
+
+
+      // PENTING: DEM + terrain baru ditambahkan SETELAH tile satelit dasar
+      // benar-benar ter-render di layar. Di MapLibre v5, menyalakan terrain
+      // (setTerrain) sebelum tile raster dasar termuat menyebabkan layar
+      // HITAM/KOSONG — renderer menunggu DEM drape tapi tak punya apa-apa
+      // untuk di-drape. Solusi: tunggu tile satelit termuat dulu, baru
+      // tambah DEM source + aktifkan terrain.
+      const enableTerrainWhenReady = () => {
+        // Cek apakah tile satelit sudah termuat
+        const satReady = !!map.getSource(SAT_SOURCE) && map.isSourceLoaded(SAT_SOURCE);
+        if (!satReady) return; // belum siap, tunggu event berikutnya
+        satTileLoadedRef.current = true;
+
+        // Hentikan listener — cukup sekali
+        map.off("sourcedata", onSatLoaded);
+        map.off("idle", enableTerrainWhenReady);
+
+        // Baru sekarang tambahkan DEM source (best-effort).
         try {
-          map.setTerrain({ source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION });
+          map.addSource(DEM_SOURCE, {
+            type: "raster-dem",
+            tiles: [TERRARIUM_URL],
+            encoding: "terrarium",
+            tileSize: 256,
+            maxzoom: 15,
+            attribution: "Terrain: Mapzen/Terrarium · AWS",
+          });
         } catch {
-          /* terrain opsional — tetap tampil satelit datar */
+          /* DEM opsional */
+          return;
         }
+
+        // Tunggu DEM termuat, baru aktifkan terrain.
+        const onDemLoaded = (e: maplibregl.MapSourceDataEvent) => {
+          if (e.sourceId !== DEM_SOURCE || !e.isSourceLoaded) return;
+          map.off("sourcedata", onDemLoaded);
+          if (!mode3dRef.current) return;
+          try {
+            map.setTerrain({ source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION });
+          } catch {
+            /* terrain opsional — tetap tampil satelit datar */
+          }
+          // Langit best-effort (hanya setelah terrain aktif).
+          try {
+            map.setSky({
+              "sky-color": "#0d1b2e",
+              "sky-horizon-blend": 0.6,
+              "horizon-color": "#e8b98a",
+              "horizon-fog-blend": 0.6,
+              "fog-color": "#d9c3a5",
+              "fog-ground-blend": 0.35,
+            });
+          } catch {
+            /* sky opsional */
+          }
+        };
+        map.on("sourcedata", onDemLoaded);
       };
-      map.on("sourcedata", onDemLoaded);
+
+      const onSatLoaded = (e: maplibregl.MapSourceDataEvent) => {
+        if (e.sourceId !== SAT_SOURCE || !e.isSourceLoaded) return;
+        enableTerrainWhenReady();
+      };
+      map.on("sourcedata", onSatLoaded);
+      // Fallback: jika tile sudah ter-cache, sourcedata mungkin sudah lewat.
+      map.on("idle", enableTerrainWhenReady);
     };
 
     // Jalankan setup SEGERA setelah style siap — via BANYAK pemicu (event +
@@ -421,7 +447,36 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     });
 
     mapRef.current = map;
+    
+    let hasFitFirstBounds = false;
+    const resizeObserver = new ResizeObserver(() => {
+      if (mapRef.current) {
+        mapRef.current.resize();
+        const container = mapRef.current.getContainer();
+        if (container && container.clientWidth > 0 && container.clientHeight > 0 && !hasFitFirstBounds) {
+          hasFitFirstBounds = true;
+          // Lakukan fitBounds perdana setelah container terukur
+          const g = geoms[activeIdxRef.current];
+          const bounds = g.coords.reduce(
+            (b, c) => b.extend(c),
+            new maplibregl.LngLatBounds(g.coords[0], g.coords[0])
+          );
+          mapRef.current.fitBounds(bounds, {
+            padding: 60,
+            pitch: mode3dRef.current ? OVERVIEW_PITCH_3D : 0,
+            bearing: 0,
+            duration: 0,
+          });
+        }
+      }
+    });
+
+    if (mapContainerRef.current) {
+      resizeObserver.observe(mapContainerRef.current);
+    }
+
     return () => {
+      resizeObserver.disconnect();
       clearInterval(setupPoll);
       clearTimeout(errTimer);
       map.remove();
@@ -481,6 +536,13 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     (animated: boolean) => {
       const map = mapRef.current;
       if (!map) return;
+
+      // Mencegah error fitBounds jika dimensi container masih 0 (bisa merusak matriks kamera MapLibre)
+      const container = map.getContainer();
+      if (!container || container.clientWidth === 0 || container.clientHeight === 0) {
+        return;
+      }
+
       const g = geoms[activeIdxRef.current];
       const bounds = g.coords.reduce(
         (b, c) => b.extend(c),
@@ -562,6 +624,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
   useEffect(() => {
     const onResize = () => {
+      if (mapRef.current) {
+        mapRef.current.resize();
+      }
       drawStaticElevation();
       renderFrame(fRef.current);
     };
@@ -676,8 +741,8 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     const map = mapRef.current;
     if (!map) return;
     try {
-      // Nyalakan terrain hanya bila DEM sudah termuat (hindari layar hitam).
-      const demReady = !!map.getSource(DEM_SOURCE) && map.isSourceLoaded(DEM_SOURCE);
+      // Nyalakan terrain hanya bila BOTH sat + DEM sudah termuat (hindari layar hitam).
+      const demReady = satTileLoadedRef.current && !!map.getSource(DEM_SOURCE) && map.isSourceLoaded(DEM_SOURCE);
       map.setTerrain(next && demReady ? { source: DEM_SOURCE, exaggeration: TERRAIN_EXAGGERATION } : null);
     } catch {
       /* terrain opsional */
@@ -720,7 +785,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
       {/* peta memenuhi sisa layar */}
       <div className="relative min-h-0 flex-1">
-        <div ref={mapContainerRef} className="absolute inset-0" />
+        <div className="absolute inset-0">
+          <div ref={mapContainerRef} className="h-full w-full" />
+        </div>
 
         {/* judul overlay */}
         <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[70%]">
