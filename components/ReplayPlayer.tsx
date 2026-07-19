@@ -188,6 +188,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mode3dRef = useRef(true);
   const followActiveRef = useRef(false);
+  const hikeChangedRef = useRef(true); // default true agar inisialisasi awal juga instan
   const userPannedRef = useRef(false);
   const camRef = useRef({ lng: 0, lat: 0, bearing: 0, pitch: 0, zoom: 0, ele: 0 });
 
@@ -574,16 +575,22 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       const fLookAt = Math.min(1, f + CHASE_LOOKAT_M / g.totalDist);
       const lookAt = pointAtFraction(h, g, fLookAt).lngLat;
 
+      if (hikeChangedRef.current) {
+        hikeChangedRef.current = false;
+        followActiveRef.current = false;
+      }
+
       if (!followActiveRef.current) {
         camRef.current = {
           lng: lookAt[0],
           lat: lookAt[1],
-          bearing: map.getBearing(),
-          pitch: map.getPitch(),
-          zoom: map.getZoom(),
+          bearing: targetBearing,
+          pitch: FOLLOW_PITCH,
+          zoom: FOLLOW_ZOOM,
           ele,
         };
         followActiveRef.current = true;
+        map.jumpTo({ center: [lookAt[0], lookAt[1]], bearing: targetBearing, pitch: FOLLOW_PITCH, zoom: FOLLOW_ZOOM });
       }
       const c = camRef.current;
       c.lng += (lookAt[0] - c.lng) * 0.12;
@@ -609,6 +616,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     const map = mapRef.current;
     if (!map || !mapReady) return;
 
+    hikeChangedRef.current = true; // Tandai hike berubah agar kamera lompat instan
     (map.getSource(FULL_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(lineTo(geom.coords));
     (map.getSource(PROGRESS_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(emptyLine());
     (map.getSource(ENDPOINT_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(
@@ -718,6 +726,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     setFinishedAll(false);
     userPannedRef.current = false;
     setShowRecenter(false);
+    hikeChangedRef.current = true; // Tandai hike berubah
     setActiveIdx(idx);
     setPlaying(autoplay);
   };
