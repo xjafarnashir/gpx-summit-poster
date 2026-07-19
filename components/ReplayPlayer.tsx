@@ -168,6 +168,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   // "tengahkan" muncul untuk kembali mengikuti pendaki.
   const [showRecenter, setShowRecenter] = useState(false);
   const mapReadyRef = useRef(false);
+  const satTileLoadedRef = useRef(false);
 
   const hike = hikes[activeIdx];
   const geom = geoms[activeIdx];
