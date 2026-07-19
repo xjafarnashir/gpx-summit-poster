@@ -5,7 +5,7 @@ import Link from "next/link";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { StyleSpecification } from "maplibre-gl";
-import { ArrowUpRight, Boxes, Download, Loader2, LocateFixed, Mountain, Pause, Play, RotateCcw } from "lucide-react";
+import { ArrowUpRight, Boxes, Loader2, LocateFixed, Mountain, Pause, Play, RotateCcw } from "lucide-react";
 import { haversineMeters } from "@/lib/geo";
 import { parseHmsToSeconds, secondsToHms } from "@/lib/statFormat";
 import type { ReplayData, ReplayHike } from "@/lib/replay";
@@ -169,9 +169,6 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   // "tengahkan" muncul untuk kembali mengikuti pendaki.
   const [showRecenter, setShowRecenter] = useState(false);
   const [tilesLoaded, setTilesLoaded] = useState(false);
-  const [isRendering, setIsRendering] = useState(false);
-  const [renderProgress, setRenderProgress] = useState(0);
-  const isRenderingRef = useRef(false);
   const mapReadyRef = useRef(false);
   const satTileLoadedRef = useRef(false);
 
@@ -261,8 +258,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       zoom: 12,
       maxPitch: 80,
       attributionControl: { compact: true },
-      preserveDrawingBuffer: true,
-    } as any);
+    });
     // Interaksi peta (cubit-zoom, geser, putar) aktif — default MapLibre,
     // ditegaskan agar jelas. Zoom via roda mouse & pinch dua jari.
     map.touchZoomRotate.enable();
@@ -484,7 +480,6 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       resizeObserver.disconnect();
       clearInterval(setupPoll);
       clearTimeout(errTimer);
-      isRenderingRef.current = false;
       map.remove();
       mapRef.current = null;
     };
@@ -689,20 +684,16 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
       if (fRef.current >= 1) {
         setPlaying(false);
-        if (isRenderingRef.current) {
-          // Rendering selesai — jangan auto-advance, downloadVideo akan handle.
+        const idx = activeIdxRef.current;
+        if (idx < hikes.length - 1) {
+          advanceTimerRef.current = setTimeout(() => {
+            fRef.current = 0;
+            setActiveIdx(idx + 1);
+            setPlaying(true);
+          }, 1500);
         } else {
-          const idx = activeIdxRef.current;
-          if (idx < hikes.length - 1) {
-            advanceTimerRef.current = setTimeout(() => {
-              fRef.current = 0;
-              setActiveIdx(idx + 1);
-              setPlaying(true);
-            }, 1500);
-          } else {
-            setFinishedAll(true);
-            applyOverview(true);
-          }
+          setFinishedAll(true);
+          applyOverview(true);
         }
       }
     };
@@ -716,177 +707,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
 
 
 
-  async function downloadVideo() {
-    const map = mapRef.current;
-    const canvas = map?.getCanvas();
-    if (!map || !canvas || isRenderingRef.current) return;
 
-    const originalSpeed = speed;
-    
-    // Helper waitMapLoaded lokal untuk memastikan tiles & style ter-load penuh
-    const waitMapLoaded = () => {
-      return new Promise<void>((resolve) => {
-        setTimeout(() => {
-          let attempts = 0;
-          const check = () => {
-            attempts++;
-            if (map.areTilesLoaded() || attempts > 30) {
-              resolve();
-            } else {
-              setTimeout(check, 100);
-            }
-          };
-          check();
-        }, 150);
-      });
-    };
-
-    isRenderingRef.current = true;
-    setIsRendering(true);
-    setRenderProgress(0);
-
-    const g = geoms[activeIdxRef.current];
-    const h = hikes[activeIdxRef.current];
-
-    try {
-      // ——— Fase 1: Pre-load tile di sepanjang rute (80 langkah agar overlap sempurna) ———
-      const PRELOAD_STEPS = 80;
-      for (let i = 0; i <= PRELOAD_STEPS; i++) {
-        if (!isRenderingRef.current) return; // dibatalkan
-        const f = i / PRELOAD_STEPS;
-        const { lngLat: cur } = pointAtFraction(h, g, f);
-        const fBear = Math.min(1, f + CHASE_BEARING_M / g.totalDist);
-        const targetBearing = bearingDeg(cur, pointAtFraction(h, g, fBear).lngLat);
-        const fLookAt = Math.min(1, f + CHASE_LOOKAT_M / g.totalDist);
-        const lookAt = pointAtFraction(h, g, fLookAt).lngLat;
-
-        map.jumpTo({
-          center: [lookAt[0], lookAt[1]],
-          bearing: targetBearing,
-          pitch: FOLLOW_PITCH,
-          zoom: FOLLOW_ZOOM,
-        });
-
-        await waitMapLoaded();
-        setRenderProgress(Math.round((i / PRELOAD_STEPS) * 50));
-      }
-
-      if (!isRenderingRef.current) return;
-
-      // ——— Fase 2: Reset kamera ke awal dan pastikan loading penuh ———
-      fRef.current = 0;
-      hikeChangedRef.current = true;
-      followActiveRef.current = false;
-      userPannedRef.current = false;
-      setShowRecenter(false);
-      setFinishedAll(false);
-      renderFrame(0);
-      if (mode3dRef.current) updateFollowCamera(0);
-
-      await waitMapLoaded();
-      setRenderProgress(55);
-
-      if (!isRenderingRef.current) return;
-
-      // ——— Fase 3: Mulai rekam dengan kecepatan 1x agar durasi pas dan smooth ———
-      setSpeed(1);
-      speedRef.current = 1;
-
-      const stream = (canvas as any).captureStream
-        ? (canvas as any).captureStream(30)
-        : (canvas as any).mozCaptureStream
-          ? (canvas as any).mozCaptureStream(30)
-          : null;
-      if (!stream) {
-        alert("Browser Anda tidak mendukung perekaman video canvas.");
-        return;
-      }
-
-      const mimeType = [
-        "video/mp4;codecs=h264",
-        "video/webm;codecs=h264",
-        "video/webm;codecs=vp9",
-        "video/webm",
-      ].find((t) => MediaRecorder.isTypeSupported(t)) || "";
-
-      const chunks: Blob[] = [];
-      const recorder = new MediaRecorder(stream, {
-        mimeType,
-        videoBitsPerSecond: 8000000, // 8 Mbps untuk visual premium
-      });
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunks.push(e.data);
-      };
-
-      recorder.start();
-
-      // Mulai animasi
-      playingRef.current = true;
-      setPlaying(true);
-
-      // Poll progress dan tunggu selesai
-      const progressPoll = setInterval(() => {
-        setRenderProgress(55 + Math.round(fRef.current * 45));
-      }, 200);
-
-      await new Promise<void>((resolve) => {
-        const check = setInterval(() => {
-          if (fRef.current >= 1 || !isRenderingRef.current) {
-            clearInterval(check);
-            resolve();
-          }
-        }, 100);
-      });
-
-      clearInterval(progressPoll);
-      setPlaying(false);
-      playingRef.current = false;
-
-      if (!isRenderingRef.current) {
-        if (recorder.state !== "inactive") recorder.stop();
-        return;
-      }
-
-      setRenderProgress(100);
-
-      // Hentikan recorder dan download
-      await new Promise<void>((resolve) => {
-        recorder.onstop = () => {
-          const blob = new Blob(chunks, { type: mimeType });
-          const ext = mimeType.includes("mp4") ? "mp4" : "webm";
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          const hikeName = hikes[activeIdxRef.current]?.name || "hike";
-          a.download = `replay-${hikeName.toLowerCase().replace(/\s+/g, "-")}.${ext}`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          resolve();
-        };
-        recorder.stop();
-      });
-
-    } catch (err) {
-      console.error("Rendering failed:", err);
-    } finally {
-      // Kembalikan ke pengaturan semula
-      isRenderingRef.current = false;
-      setIsRendering(false);
-      setRenderProgress(0);
-      setPlaying(false);
-      playingRef.current = false;
-      
-      setSpeed(originalSpeed);
-      speedRef.current = originalSpeed;
-
-      // Kembalikan peta ke overview
-      fRef.current = 0;
-      renderFrame(0);
-      applyOverview(true);
-    }
-  }
 
   /* ------------------------------- kontrol -------------------------------- */
 
@@ -903,10 +724,6 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   };
 
   const switchHike = (idx: number, autoplay: boolean) => {
-    if (isRenderingRef.current) {
-      isRenderingRef.current = false;
-      setIsRendering(false);
-    }
     if (advanceTimerRef.current) clearTimeout(advanceTimerRef.current);
     fRef.current = 0;
     setFinishedAll(false);
@@ -918,10 +735,6 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   };
 
   const handlePlayPause = () => {
-    if (isRenderingRef.current) {
-      isRenderingRef.current = false;
-      setIsRendering(false);
-    }
     if (fRef.current >= 1 && !playing) {
       fRef.current = 0;
       setFinishedAll(false);
@@ -1014,7 +827,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           )}
         </div>
 
-        {/* toggle 3D + speed + download di kanan-atas peta */}
+        {/* toggle 3D + speed di kanan-atas peta */}
         <div className="absolute right-3 top-3 z-10 flex flex-col items-end gap-1.5">
           <button type="button" onClick={toggle3d} title="Ganti mode tampilan" className={`${overlayChip} flex items-center gap-1`}>
             <Boxes size={11} />
@@ -1023,47 +836,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           <button type="button" onClick={cycleSpeed} title="Kecepatan animasi" className={`${overlayChip} font-mono`}>
             {speed}x
           </button>
-          <button
-            type="button"
-            disabled={!mapReady || !tilesLoaded || isRendering}
-            onClick={() => downloadVideo()}
-            title="Render & download video perjalanan"
-            className={`${overlayChip} flex items-center gap-1 disabled:opacity-40`}
-          >
-            <Download size={11} />
-            Download Video
-          </button>
         </div>
-
-        {/* Overlay progress rendering video */}
-        {isRendering && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-3 rounded-2xl bg-black/60 px-8 py-6 backdrop-blur-md">
-              <Loader2 className="h-8 w-8 animate-spin text-[#d97757]" />
-              <p className="text-sm font-semibold text-white">
-                {renderProgress < 50
-                  ? "Memuat pemandangan sepanjang rute…"
-                  : renderProgress < 100
-                    ? "Merender video perjalanan…"
-                    : "Menyiapkan unduhan…"}
-              </p>
-              <div className="h-2 w-48 overflow-hidden rounded-full bg-white/20">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-[#d97757] to-[#b8532f] transition-all duration-300"
-                  style={{ width: `${renderProgress}%` }}
-                />
-              </div>
-              <span className="font-mono text-xs text-white/70">{renderProgress}%</span>
-              <button
-                type="button"
-                onClick={() => { isRenderingRef.current = false; setIsRendering(false); setPlaying(false); }}
-                className="mt-1 rounded-full bg-white/10 px-4 py-1.5 text-xs text-white/80 hover:bg-white/20 transition-colors"
-              >
-                Batalkan
-              </button>
-            </div>
-          </div>
-        )}
 
         {/* status: memuat / error peta — jangan biarkan hitam senyap */}
         {!mapReady && !mapError && (
