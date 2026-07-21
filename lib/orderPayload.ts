@@ -32,7 +32,10 @@ interface OrderPayloadBase {
   tema: string;
   ig: string;
   tt: string;
+  /** Link QR bebas (Strava/Linktree/dll). Kosong bila customer pilih replay. */
   qr: string;
+  /** true = customer minta QR berupa Summit Replay (animasi), bukan link biasa. */
+  qrReplay: boolean;
   catatan: string;
   kirim: OrderShipping;
 }
@@ -105,6 +108,7 @@ export function extractOrderPayload(text: string): OrderPayload {
     ig: str(o.ig),
     tt: str(o.tt),
     qr: str(o.qr),
+    qrReplay: o.qrReplay === true,
     catatan: str(o.catatan),
     kirim,
   };

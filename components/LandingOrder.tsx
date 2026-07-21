@@ -29,6 +29,8 @@ interface SingleForm {
   instagram: string;
   tiktok: string;
   linkQr: string;
+  /** true = QR jadi Summit Replay (animasi), bukan link biasa. */
+  qrReplay: boolean;
   catatan: string;
 }
 
@@ -49,6 +51,8 @@ interface CollectionForm {
   instagram: string;
   tiktok: string;
   linkQr: string;
+  /** true = QR jadi Summit Replay (animasi), bukan link biasa. */
+  qrReplay: boolean;
   catatan: string;
   hikes: HikeForm[];
 }
@@ -65,6 +69,7 @@ const EMPTY_SINGLE: SingleForm = {
   instagram: "",
   tiktok: "",
   linkQr: "",
+  qrReplay: false,
   catatan: "",
 };
 
@@ -77,6 +82,7 @@ const EMPTY_COLLECTION: CollectionForm = {
   instagram: "",
   tiktok: "",
   linkQr: "",
+  qrReplay: false,
   catatan: "",
   hikes: [emptyHike(), emptyHike()],
 };
@@ -127,7 +133,8 @@ function buildMsgSingle(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel: st
   add("Waktu tempuh", f.waktu);
   add("Instagram", f.instagram);
   add("TikTok", f.tiktok);
-  add("Link QR", f.linkQr);
+  if (f.qrReplay) lines.push("- QR: Summit Replay (animasi pergerakan pendakian)");
+  else add("Link QR", f.linkQr);
   add("Catatan", f.catatan);
   lines.push(...shippingLines(ship));
   lines.push("", "File GPX + foto pendakian saya kirim di chat ini ya.");
@@ -146,7 +153,8 @@ function buildMsgSingle(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel: st
     waktu: f.waktu.trim(),
     ig: f.instagram.trim(),
     tt: f.tiktok.trim(),
-    qr: f.linkQr.trim(),
+    qr: f.qrReplay ? "" : f.linkQr.trim(),
+    qrReplay: f.qrReplay,
     catatan: f.catatan.trim(),
     kirim: { penerima: ship.penerima.trim(), hp: ship.hp.trim(), alamat: ship.alamat.trim() },
   };
@@ -168,7 +176,8 @@ function buildMsgCollection(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel
   add("Deskripsi", f.deskripsi);
   add("Instagram", f.instagram);
   add("TikTok", f.tiktok);
-  add("Link QR", f.linkQr);
+  if (f.qrReplay) lines.push("- QR: Summit Replay (animasi pergerakan pendakian)");
+  else add("Link QR", f.linkQr);
   add("Catatan", f.catatan);
   f.hikes.forEach((h, i) => {
     lines.push("", `Gunung ${i + 1}:`, `- Gunung: ${h.gunung.trim()}`);
@@ -192,7 +201,8 @@ function buildMsgCollection(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel
     deskripsi: f.deskripsi.trim(),
     ig: f.instagram.trim(),
     tt: f.tiktok.trim(),
-    qr: f.linkQr.trim(),
+    qr: f.qrReplay ? "" : f.linkQr.trim(),
+    qrReplay: f.qrReplay,
     catatan: f.catatan.trim(),
     kirim: { penerima: ship.penerima.trim(), hp: ship.hp.trim(), alamat: ship.alamat.trim() },
     gunung: f.hikes.map((h) => ({
@@ -482,6 +492,60 @@ function Field({ label, opt, ...props }: { label: string; opt?: boolean } & Reac
   );
 }
 
+/** Pilihan QR di poster: link bebas ATAU Summit Replay (animasi). */
+function QrChooser({
+  replay,
+  link,
+  onReplay,
+  onLink,
+}: {
+  replay: boolean;
+  link: string;
+  onReplay: (v: boolean) => void;
+  onLink: (v: string) => void;
+}) {
+  return (
+    <div>
+      <span className={labelClass}>
+        QR code di poster <span className="font-normal text-zinc-400">(opsional)</span>
+      </span>
+      <div className="clay-well mt-1 inline-flex w-full gap-1 p-1">
+        {[
+          { v: false, label: "Link" },
+          { v: true, label: "Summit Replay" },
+        ].map((o) => (
+          <button
+            key={o.label}
+            type="button"
+            onClick={() => onReplay(o.v)}
+            className={`flex-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+              replay === o.v
+                ? "bg-gradient-to-r from-[#d97757] to-[#b8532f] text-white shadow-sm"
+                : "text-zinc-600 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+      {replay ? (
+        <p className="mt-1.5 text-xs leading-relaxed text-zinc-500 dark:text-zinc-400">
+          QR akan jadi <strong className="text-[#9c4a2c] dark:text-[#e59a7c]">Summit Replay</strong> — halaman animasi pergerakan
+          pendakianmu (basecamp → puncak). Dibuatkan admin dari file GPX-mu.
+        </p>
+      ) : (
+        <input
+          className={`${inputClass} mt-1.5`}
+          type="url"
+          placeholder="strava.com / linktr.ee / ... (boleh kosong)"
+          value={link}
+          onChange={(e) => onLink(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
 function PackageSelector({
   packages,
   pkgId,
@@ -688,7 +752,12 @@ export default function LandingOrder() {
                 <Field label="Instagram" opt placeholder="@handle" value={single.instagram} onChange={(e) => patchS({ instagram: e.target.value })} />
                 <Field label="TikTok" opt placeholder="@handle" value={single.tiktok} onChange={(e) => patchS({ tiktok: e.target.value })} />
               </div>
-              <Field label="Link QR code" opt placeholder="strava.com / linktr.ee / ..." value={single.linkQr} onChange={(e) => patchS({ linkQr: e.target.value })} />
+              <QrChooser
+                replay={single.qrReplay}
+                link={single.linkQr}
+                onReplay={(v) => patchS({ qrReplay: v })}
+                onLink={(v) => patchS({ linkQr: v })}
+              />
               <label className={labelClass}>
                 Catatan <span className="font-normal text-zinc-400">(opsional)</span>
                 <textarea rows={2} className={inputClass} placeholder="Permintaan khusus: warna jalur, nama pos, dll." value={single.catatan} onChange={(e) => patchS({ catatan: e.target.value })} />
@@ -703,7 +772,12 @@ export default function LandingOrder() {
                 <Field label="TikTok" opt placeholder="@handle" value={collection.tiktok} onChange={(e) => patchC({ tiktok: e.target.value })} />
               </div>
               <Field label="Deskripsi / quote" opt placeholder="Tiga gunung, satu cerita..." value={collection.deskripsi} onChange={(e) => patchC({ deskripsi: e.target.value })} />
-              <Field label="Link QR code" opt placeholder="strava.com / linktr.ee / ..." value={collection.linkQr} onChange={(e) => patchC({ linkQr: e.target.value })} />
+              <QrChooser
+                replay={collection.qrReplay}
+                link={collection.linkQr}
+                onReplay={(v) => patchC({ qrReplay: v })}
+                onLink={(v) => patchC({ linkQr: v })}
+              />
 
               {collection.hikes.map((h, i) => (
                 <div key={i} className="clay-well p-4">

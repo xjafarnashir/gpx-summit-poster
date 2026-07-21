@@ -97,6 +97,7 @@ export default function ImportOrderPanel() {
         p.jenis === "single" ? `Pesanan 1 pendakian (${p.gunung || "-"}) terisi.` : `Pesanan koleksi ${p.gunung.length} gunung terisi.`,
         "Tinggal upload GPX + foto.",
       ];
+      if (p.qrReplay) parts.push('QR = Summit Replay diminta customer — setelah upload GPX, klik "Buat Summit Replay".');
       if (p.catatan) parts.push(`Catatan customer: "${p.catatan}"`);
       setOkMsg(parts.join(" "));
       setText("");
