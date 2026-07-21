@@ -550,12 +550,15 @@ export default function LandingOrder() {
   const [collection, setCollection] = useState<CollectionForm>(EMPTY_COLLECTION);
   const [shipping, setShipping] = useState<OrderShipping>(EMPTY_SHIPPING);
   const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
-  const [bgTheme, setBgTheme] = useState<BackgroundThemeId>("sunset");
+  // Tema latar WAJIB dipilih customer (tanpa default) — null = belum pilih.
+  const [bgTheme, setBgTheme] = useState<BackgroundThemeId | null>(null);
+  const [bgError, setBgError] = useState(false);
   // Harga terkini dari server (bisa disetel admin di /editor).
   const pricing = usePricing();
   const packages = applyPricing(pricing);
   const pkg = pkgId ? (packages.find((p) => p.id === pkgId) ?? null) : null;
-  const bg = bgThemeById(bgTheme);
+  // Preview memakai sunset sebagai tampilan netral sebelum customer memilih.
+  const bg = bgThemeById(bgTheme ?? "sunset");
 
   const patchS = (p: Partial<SingleForm>) => setSingle((f) => ({ ...f, ...p }));
   const patchC = (p: Partial<CollectionForm>) => setCollection((f) => ({ ...f, ...p }));
@@ -571,13 +574,24 @@ export default function LandingOrder() {
     setPkgError(false);
   };
 
-  // Klik "Lanjut" → validasi paket → tampilkan KONFIRMASI isi pesan (bukan
-  // langsung buka WA), supaya calon customer bisa cek/koreksi dulu.
+  const pickTheme = (id: BackgroundThemeId) => {
+    setBgTheme(id);
+    setBgError(false);
+  };
+
+  // Klik "Lanjut" → validasi paket & tema → KONFIRMASI isi pesan (bukan langsung
+  // buka WA), supaya calon customer bisa cek/koreksi dulu. Field teks wajib
+  // ditegakkan native `required` sebelum handler ini jalan.
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!pkg) {
       setPkgError(true);
       document.getElementById("lo-paket")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (!bgTheme) {
+      setBgError(true);
+      document.getElementById("lo-tema")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
     setConfirmMsg(
@@ -625,15 +639,20 @@ export default function LandingOrder() {
             Preview langsung · {pkg ? pkg.name : "pilih paket"} · 20x30 cm
           </p>
 
-          {/* tema latar */}
-          <div className="mt-4">
-            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">Tema latar</span>
-            <div className="mt-2 grid grid-cols-4 gap-2">
+          {/* tema latar — WAJIB dipilih */}
+          <div id="lo-tema" className="mt-4 scroll-mt-24">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                Tema latar <span className="text-[#c05d3d]">*</span>
+              </span>
+              {bgError && <span className="text-xs font-medium text-red-500">Pilih dulu temanya ya</span>}
+            </div>
+            <div className={`mt-2 grid grid-cols-4 gap-2 rounded-2xl ${bgError ? "ring-2 ring-red-400/70" : ""}`}>
               {BACKGROUND_THEMES.map((bt) => (
                 <button
                   key={bt.id}
                   type="button"
-                  onClick={() => setBgTheme(bt.id)}
+                  onClick={() => pickTheme(bt.id)}
                   className={`clay-tile flex flex-col items-center gap-1 px-1 py-2 text-center text-[11px] font-medium transition-colors ${
                     bgTheme === bt.id
                       ? "border-[#d97757] text-[#9c4a2c] dark:border-[#d97757] dark:text-[#e59a7c]"
@@ -660,12 +679,12 @@ export default function LandingOrder() {
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Nama di poster" required placeholder="Nama kamu / tim" value={single.nama} onChange={(e) => patchS({ nama: e.target.value })} />
                 <Field label="Gunung" required placeholder="Gunung Prau" value={single.gunung} onChange={(e) => patchS({ gunung: e.target.value })} />
-                <Field label="Via / jalur" placeholder="Patak Banteng" value={single.via} onChange={(e) => patchS({ via: e.target.value })} />
-                <Field label="Tanggal" placeholder="2 Juli 2026" value={single.tanggal} onChange={(e) => patchS({ tanggal: e.target.value })} />
-                <Field label="Ketinggian (mdpl)" inputMode="numeric" placeholder="2565" value={single.ketinggian} onChange={(e) => patchS({ ketinggian: e.target.value })} />
-                <Field label="Jarak (km)" inputMode="decimal" placeholder="8.5" value={single.jarak} onChange={(e) => patchS({ jarak: e.target.value })} />
-                <Field label="Elevation gain (m)" inputMode="numeric" placeholder="1200" value={single.elevGain} onChange={(e) => patchS({ elevGain: e.target.value })} />
-                <Field label="Waktu tempuh" placeholder="05:10:00" value={single.waktu} onChange={(e) => patchS({ waktu: e.target.value })} />
+                <Field label="Via / jalur" required placeholder="Patak Banteng" value={single.via} onChange={(e) => patchS({ via: e.target.value })} />
+                <Field label="Tanggal" required placeholder="2 Juli 2026" value={single.tanggal} onChange={(e) => patchS({ tanggal: e.target.value })} />
+                <Field label="Ketinggian (mdpl)" required inputMode="numeric" placeholder="2565" value={single.ketinggian} onChange={(e) => patchS({ ketinggian: e.target.value })} />
+                <Field label="Jarak (km)" required inputMode="decimal" placeholder="8.5" value={single.jarak} onChange={(e) => patchS({ jarak: e.target.value })} />
+                <Field label="Elevation gain (m)" required inputMode="numeric" placeholder="1200" value={single.elevGain} onChange={(e) => patchS({ elevGain: e.target.value })} />
+                <Field label="Waktu tempuh" required placeholder="05:10:00" value={single.waktu} onChange={(e) => patchS({ waktu: e.target.value })} />
                 <Field label="Instagram" opt placeholder="@handle" value={single.instagram} onChange={(e) => patchS({ instagram: e.target.value })} />
                 <Field label="TikTok" opt placeholder="@handle" value={single.tiktok} onChange={(e) => patchS({ tiktok: e.target.value })} />
               </div>
@@ -698,12 +717,12 @@ export default function LandingOrder() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Gunung" required placeholder="Gunung Sindoro" value={h.gunung} onChange={(e) => patchHike(i, { gunung: e.target.value })} />
-                    <Field label="Via / jalur" placeholder="Kledung" value={h.via} onChange={(e) => patchHike(i, { via: e.target.value })} />
-                    <Field label="Tanggal" placeholder="8 Sep 2025" value={h.tanggal} onChange={(e) => patchHike(i, { tanggal: e.target.value })} />
-                    <Field label="Waktu tempuh" placeholder="03:14:00" value={h.waktu} onChange={(e) => patchHike(i, { waktu: e.target.value })} />
-                    <Field label="Ketinggian (mdpl)" inputMode="numeric" placeholder="3153" value={h.ketinggian} onChange={(e) => patchHike(i, { ketinggian: e.target.value })} />
-                    <Field label="Jarak (km)" inputMode="decimal" placeholder="17.03" value={h.jarak} onChange={(e) => patchHike(i, { jarak: e.target.value })} />
-                    <Field label="Elevation gain (m)" inputMode="numeric" placeholder="1653" value={h.elevGain} onChange={(e) => patchHike(i, { elevGain: e.target.value })} />
+                    <Field label="Via / jalur" required placeholder="Kledung" value={h.via} onChange={(e) => patchHike(i, { via: e.target.value })} />
+                    <Field label="Tanggal" required placeholder="8 Sep 2025" value={h.tanggal} onChange={(e) => patchHike(i, { tanggal: e.target.value })} />
+                    <Field label="Waktu tempuh" required placeholder="03:14:00" value={h.waktu} onChange={(e) => patchHike(i, { waktu: e.target.value })} />
+                    <Field label="Ketinggian (mdpl)" required inputMode="numeric" placeholder="3153" value={h.ketinggian} onChange={(e) => patchHike(i, { ketinggian: e.target.value })} />
+                    <Field label="Jarak (km)" required inputMode="decimal" placeholder="17.03" value={h.jarak} onChange={(e) => patchHike(i, { jarak: e.target.value })} />
+                    <Field label="Elevation gain (m)" required inputMode="numeric" placeholder="1653" value={h.elevGain} onChange={(e) => patchHike(i, { elevGain: e.target.value })} />
                   </div>
                 </div>
               ))}

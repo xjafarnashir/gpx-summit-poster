@@ -435,13 +435,23 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       if (mapReadyRef.current) clearInterval(setupPoll);
     }, 200);
 
-    // Surface error tile/peta ke UI (bukan hitam senyap) → mudah didiagnosa.
+    // Tandai bila minimal SATU tile satelit benar-benar termuat.
+    map.on("data", (e) => {
+      const ev = e as unknown as { sourceId?: string; tile?: unknown };
+      if (ev.sourceId === "sat" && ev.tile) satTileLoadedRef.current = true;
+    });
+
+    // Bila setelah beberapa detik tak ada tile satelit termuat → kemungkinan
+    // diblokir Shields/ekstensi browser (Brave dikenal memblok WebGL peta) atau
+    // jaringan. Tampilkan pesan + saran, jangan biarkan hitam senyap.
     const errTimer = setTimeout(() => {
-      if (!mapReadyRef.current) setMapError("Peta lambat dimuat — cek koneksi internet.");
+      if (!satTileLoadedRef.current) {
+        setMapError(
+          "Peta tak termuat — kemungkinan diblokir Shields/ekstensi browser (mis. Brave). Matikan Shields untuk situs ini atau buka di Chrome."
+        );
+      }
     }, 9000);
     map.on("error", (e) => {
-      // Hanya tampilkan error KRITIS (sebelum peta siap). Setelah siap, hiccup
-      // tile individual diabaikan agar tak memunculkan peringatan palsu.
       if (mapReadyRef.current) return;
       const msg = (e as unknown as { error?: { message?: string } })?.error?.message;
       if (msg) setMapError(msg.slice(0, 140));
