@@ -125,6 +125,10 @@ export default function ExportFullButton() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+
+      // Catat 1 ekspor untuk member yang sedang login (ekspor admin diabaikan
+      // server). Fire-and-forget: kegagalan tidak boleh mengganggu hasil export.
+      fetch("/api/member/export", { method: "POST" }).catch(() => {});
     } catch (e) {
       alert(e instanceof Error ? e.message : "Gagal export full.");
     } finally {

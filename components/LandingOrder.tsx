@@ -12,7 +12,8 @@ import { ORDER_JSON_LABEL, type OrderPayload, type OrderShipping } from "@/lib/o
  * Bagian PESAN di landing page: pilih jenis (1 pendakian / koleksi 2-3 gunung),
  * isi data → PREVIEW LIVE (SVG ringan) update seketika → tombol WhatsApp dengan
  * SELURUH data sudah terangkai. Foto + file GPX menyusul di chat (setelah DP).
- * Tidak menyimpan apa pun di server.
+ * Saat customer kirim ke WhatsApp, payload pesanan juga di-POST ke /api/order
+ * (fire-and-forget) supaya muncul di dashboard admin.
  * ========================================================================== */
 
 type Mode = "single" | "collection";
@@ -114,7 +115,7 @@ function orderJsonBlock(payload: OrderPayload): string[] {
   return ["", ORDER_JSON_LABEL, JSON.stringify(payload)];
 }
 
-function buildMsgSingle(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel: string, f: SingleForm, ship: OrderShipping): string {
+function buildMsgSingle(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel: string, f: SingleForm, ship: OrderShipping): { text: string; payload: OrderPayload } {
   const lines = [
     `Halo! Saya mau pesan *Poster Pendakian 20x30 cm landscape + jalur 3D timbul*.`,
     `Paket: *${pkg.name}* — ${pkg.mount} (${pkg.price})`,
@@ -159,10 +160,10 @@ function buildMsgSingle(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel: st
     kirim: { penerima: ship.penerima.trim(), hp: ship.hp.trim(), alamat: ship.alamat.trim() },
   };
   lines.push(...orderJsonBlock(payload));
-  return lines.join("\n");
+  return { text: lines.join("\n"), payload };
 }
 
-function buildMsgCollection(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel: string, f: CollectionForm, ship: OrderShipping): string {
+function buildMsgCollection(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel: string, f: CollectionForm, ship: OrderShipping): { text: string; payload: OrderPayload } {
   const lines = [
     `Halo! Saya mau pesan *Poster Koleksi Ekspedisi (${f.hikes.length} gunung) 20x30 cm + jalur 3D timbul*.`,
     `Paket: *${pkg.name}* — ${pkg.mount} (${pkg.price})`,
@@ -216,7 +217,7 @@ function buildMsgCollection(pkg: PosterPackage, bgId: BackgroundThemeId, bgLabel
     })),
   };
   lines.push(...orderJsonBlock(payload));
-  return lines.join("\n");
+  return { text: lines.join("\n"), payload };
 }
 
 /* ------------------------------- Preview SVG ------------------------------ */
@@ -613,7 +614,8 @@ export default function LandingOrder() {
   const [single, setSingle] = useState<SingleForm>(EMPTY_SINGLE);
   const [collection, setCollection] = useState<CollectionForm>(EMPTY_COLLECTION);
   const [shipping, setShipping] = useState<OrderShipping>(EMPTY_SHIPPING);
-  const [confirmMsg, setConfirmMsg] = useState<string | null>(null);
+  // Menyimpan teks pesan WA + payload terstruktur (untuk auto-simpan ke server).
+  const [confirm, setConfirm] = useState<{ text: string; payload: OrderPayload } | null>(null);
   // Tema latar WAJIB dipilih customer (tanpa default) — null = belum pilih.
   const [bgTheme, setBgTheme] = useState<BackgroundThemeId | null>(null);
   const [bgError, setBgError] = useState(false);
@@ -658,11 +660,21 @@ export default function LandingOrder() {
       document.getElementById("lo-tema")?.scrollIntoView({ behavior: "smooth", block: "center" });
       return;
     }
-    setConfirmMsg(
+    setConfirm(
       mode === "single"
         ? buildMsgSingle(pkg, bgTheme, bg.label, single, shipping)
         : buildMsgCollection(pkg, bgTheme, bg.label, collection, shipping)
     );
+  };
+
+  // Simpan pesanan ke server saat customer benar-benar kirim ke WhatsApp.
+  // Fire-and-forget: gagal simpan tidak boleh menghalangi buka WhatsApp.
+  const saveOrder = (payload: OrderPayload) => {
+    fetch("/api/order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
   };
 
   return (
@@ -858,18 +870,18 @@ export default function LandingOrder() {
             <MessageCircle size={17} /> Lanjut ke WhatsApp <ArrowUpRight size={15} />
           </button>
           <p className="text-center text-xs leading-relaxed text-zinc-400 dark:text-zinc-500">
-            Data tidak disimpan di server mana pun — hanya dirangkai jadi pesan WhatsApp yang kamu kirim sendiri.
+            Data pesanan disimpan agar admin bisa memprosesnya, lalu dirangkai jadi pesan WhatsApp untuk kamu kirim.
           </p>
         </form>
       </div>
 
       {/* ---- modal konfirmasi isi pesan (koreksi sebelum kirim) ---- */}
-      {confirmMsg && (
+      {confirm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
           role="dialog"
           aria-modal="true"
-          onClick={() => setConfirmMsg(null)}
+          onClick={() => setConfirm(null)}
         >
           <div
             className="clay-card flex max-h-[85vh] w-full max-w-lg flex-col p-6"
@@ -889,22 +901,25 @@ export default function LandingOrder() {
             </div>
 
             <pre className="clay-well mt-4 flex-1 overflow-auto whitespace-pre-wrap break-words p-4 text-[13px] leading-relaxed text-zinc-700 dark:text-zinc-200">
-              {confirmMsg}
+              {confirm.text}
             </pre>
 
             <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
-                onClick={() => setConfirmMsg(null)}
+                onClick={() => setConfirm(null)}
                 className="clay-tile px-5 py-2.5 text-sm font-medium text-zinc-600 transition-colors hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-100"
               >
                 Kembali & perbaiki
               </button>
               <a
-                href={waUrl(confirmMsg)}
+                href={waUrl(confirm.text)}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => setConfirmMsg(null)}
+                onClick={() => {
+                  saveOrder(confirm.payload);
+                  setConfirm(null);
+                }}
                 className="t3d-btn flex items-center justify-center gap-2 bg-gradient-to-r from-[#d97757] to-[#b8532f] px-6 py-2.5 text-sm font-semibold text-white"
               >
                 <MessageCircle size={15} /> Kirim ke WhatsApp <ArrowUpRight size={14} />

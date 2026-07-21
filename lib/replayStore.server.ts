@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { parseReplayData, type ReplayData } from "@/lib/replay";
+import { parseReplayData, type ReplayData, type ReplayListItem } from "@/lib/replay";
 
 /* ============================================================================
  * Penyimpanan data Summit Replay sisi SERVER, per-id. Urutan deteksi:
@@ -94,10 +94,14 @@ export async function readReplay(id: string): Promise<ReplayData | null> {
 export async function writeReplay(id: string, data: ReplayData): Promise<void> {
   if (!ID_RE.test(id)) throw new Error("Id replay tidak valid.");
 
+  // Simpan bersama createdAt agar daftar dashboard punya tanggal. parseReplayData
+  // mengabaikan field ekstra ini, jadi readReplay tetap aman.
+  const stored = { ...data, createdAt: Date.now() } as ReplayData & { createdAt: number };
+
   // 1. Netlify Blobs (production Netlify).
   try {
     const store = await netlifyStore();
-    await store.setJSON(id, data);
+    await store.setJSON(id, stored);
     return;
   } catch {
     /* bukan di Netlify */
@@ -105,12 +109,116 @@ export async function writeReplay(id: string, data: ReplayData): Promise<void> {
 
   // 2. Vercel Blob (bila token tersedia).
   if (process.env.BLOB_READ_WRITE_TOKEN) {
-    await writeVercelBlob(id, data);
+    await writeVercelBlob(id, stored);
     return;
   }
 
   // 3. File lokal (development).
   await fs.mkdir(DEV_DIR, { recursive: true });
-  await fs.writeFile(path.join(DEV_DIR, `${id}.json`), JSON.stringify(data), "utf8");
+  await fs.writeFile(path.join(DEV_DIR, `${id}.json`), JSON.stringify(stored), "utf8");
+}
+
+/* ------------------------ daftar & hapus (admin) ------------------------- */
+
+/** Judul tampilan dari data replay: nama gunung (single) / judul (koleksi). */
+function replayTitle(data: ReplayData): string {
+  return data.kind === "single" ? data.name : data.title;
+}
+
+function toListItem(id: string, raw: unknown, fallbackDate: number | null): ReplayListItem | null {
+  const data = parseReplayData(raw);
+  if (!data) return null;
+  const createdAt =
+    typeof (raw as { createdAt?: unknown })?.createdAt === "number"
+      ? (raw as { createdAt: number }).createdAt
+      : fallbackDate;
+  return { id, kind: data.kind, title: replayTitle(data), createdAt };
+}
+
+export async function listReplays(): Promise<ReplayListItem[]> {
+  const items: ReplayListItem[] = [];
+
+  // 1. Netlify Blobs.
+  try {
+    const store = await netlifyStore();
+    const { blobs } = await store.list();
+    for (const b of blobs) {
+      const raw = (await store.get(b.key, { type: "json" })) as unknown;
+      const item = toListItem(b.key, raw, null);
+      if (item) items.push(item);
+    }
+    return items.sort(byNewest);
+  } catch {
+    /* bukan di Netlify */
+  }
+
+  // 2. Vercel Blob.
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const { list } = await import("@vercel/blob");
+    const { blobs } = await list({ prefix: "replays/", token: process.env.BLOB_READ_WRITE_TOKEN });
+    for (const b of blobs) {
+      const id = b.pathname.replace(/^replays\//, "").replace(/\.json$/, "");
+      try {
+        const res = await fetch(b.url);
+        if (!res.ok) continue;
+        const item = toListItem(id, await res.json(), b.uploadedAt ? new Date(b.uploadedAt).getTime() : null);
+        if (item) items.push(item);
+      } catch {
+        /* lewati file rusak */
+      }
+    }
+    return items.sort(byNewest);
+  }
+
+  // 3. File lokal (development).
+  try {
+    const files = await fs.readdir(DEV_DIR);
+    for (const f of files) {
+      if (!f.endsWith(".json")) continue;
+      const id = f.replace(/\.json$/, "");
+      try {
+        const full = path.join(DEV_DIR, f);
+        const raw = JSON.parse(await fs.readFile(full, "utf8")) as unknown;
+        const stat = await fs.stat(full);
+        const item = toListItem(id, raw, stat.mtimeMs);
+        if (item) items.push(item);
+      } catch {
+        /* lewati */
+      }
+    }
+  } catch {
+    /* dir belum ada */
+  }
+  return items.sort(byNewest);
+}
+
+const byNewest = (a: ReplayListItem, b: ReplayListItem) => (b.createdAt ?? 0) - (a.createdAt ?? 0);
+
+export async function deleteReplay(id: string): Promise<void> {
+  if (!ID_RE.test(id)) return;
+
+  // 1. Netlify Blobs.
+  try {
+    const store = await netlifyStore();
+    await store.delete(id);
+    return;
+  } catch {
+    /* bukan di Netlify */
+  }
+
+  // 2. Vercel Blob.
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const { del, list } = await import("@vercel/blob");
+    const { blobs } = await list({ prefix: vercelKey(id), token: process.env.BLOB_READ_WRITE_TOKEN });
+    if (blobs[0]) await del(blobs[0].url, { token: process.env.BLOB_READ_WRITE_TOKEN });
+    return;
+  }
+
+  // 3. File lokal (development).
+  try {
+    await fs.unlink(path.join(DEV_DIR, `${id}.json`));
+  } catch {
+    /* sudah tidak ada */
+  }
 }
 

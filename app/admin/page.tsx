@@ -4,10 +4,10 @@ import { useState } from "react";
 import { KeyRound, Loader2, Mountain } from "lucide-react";
 
 /**
- * Halaman login admin. Setelah berhasil, cookie akses dipasang oleh
- * /api/login dan admin diarahkan ke halaman setup poster ("/").
- * Route ini publik (dibolehkan proxy) — tanpa kredensial yang benar
- * tidak ada cookie, dan semua halaman tools tetap tertutup.
+ * Halaman login. Setelah berhasil, /api/login memasang cookie dan mengembalikan
+ * tujuan: admin → "/dashboard", member → "/editor". Route ini publik (dibolehkan
+ * proxy) — tanpa kredensial yang benar tidak ada cookie, dan semua halaman tools
+ * tetap tertutup.
  */
 export default function AdminLoginPage() {
   const [username, setUsername] = useState("");
@@ -25,11 +25,12 @@ export default function AdminLoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       });
+      const data = (await res.json().catch(() => null)) as { error?: string; redirect?: string } | null;
       if (res.ok) {
-        window.location.href = "/";
+        // Admin → /dashboard, member → /editor (ditentukan server).
+        window.location.href = data?.redirect ?? "/";
         return;
       }
-      const data = (await res.json().catch(() => null)) as { error?: string } | null;
       setError(data?.error ?? "Username atau password salah.");
     } catch {
       setError("Gagal terhubung. Coba lagi.");

@@ -37,6 +37,15 @@ export type ReplayData =
   | ({ v: number; kind: "single" } & ReplayHike)
   | { v: number; kind: "collection"; title: string; climber?: string; hikes: ReplayHike[] };
 
+/** Ringkasan replay untuk daftar di dashboard admin. */
+export interface ReplayListItem {
+  id: string;
+  kind: "single" | "collection";
+  title: string;
+  /** Epoch ms; null bila replay lama dibuat sebelum metadata dicatat. */
+  createdAt: number | null;
+}
+
 export function replayPath(id: string): string {
   return `/landingpage/replay/${id}`;
 }

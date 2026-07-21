@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, RotateCcw, Sparkles, TriangleAlert, X } from "lucide-react";
+import { ChevronLeft, LogOut, RotateCcw, Sparkles, TriangleAlert, X } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import CollectionCanvas from "@/components/CollectionCanvas";
 import CollectionEditor from "@/components/CollectionEditor";
 import ExportFullButton from "@/components/ExportFullButton";
-import ExportPngButton from "@/components/ExportPngButton";
 import ExportPreviewButton from "@/components/ExportPreviewButton";
 import GpxUpload from "@/components/GpxUpload";
 import ImportOrderPanel from "@/components/ImportOrderPanel";
@@ -48,6 +47,11 @@ export default function EditorPage() {
       reset();
       router.replace("/");
     }
+  };
+
+  const handleLogout = async () => {
+    await fetch("/api/logout", { method: "POST" });
+    window.location.href = "/admin";
   };
 
   const handleFillSample = () => {
@@ -100,7 +104,6 @@ export default function EditorPage() {
                 <Sparkles size={13} />
                 <span className="hidden sm:inline">Isi Contoh Data</span>
               </button>
-              <ExportPngButton />
               <button
                 type="button"
                 onClick={handleReset}
@@ -109,6 +112,15 @@ export default function EditorPage() {
               >
                 <RotateCcw size={13} />
                 <span className="hidden sm:inline">Reset</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="Keluar"
+                className="clay-chip flex items-center gap-1.5 px-3 py-2 text-xs text-zinc-600 transition-colors hover:text-red-600 dark:text-zinc-300 dark:hover:text-red-400 sm:text-sm"
+              >
+                <LogOut size={13} />
+                <span className="hidden sm:inline">Keluar</span>
               </button>
             </NavMore>
           </>
