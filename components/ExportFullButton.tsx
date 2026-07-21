@@ -14,6 +14,7 @@ import type { CollectionHike, RouteMarker } from "@/types";
  * Tombol "Export Full" di NAVBAR /editor: satu klik → satu file ZIP berisi
  * SEMUA hasil produksi:
  *   - poster PNG kualitas cetak (dpi penuh)
+ *   - poster JPG (kualitas cetak, ukuran file lebih kecil untuk kirim WA/preview)
  *   - STL jalur 3D 1:1 (satu file per gunung di mode koleksi)
  *   - resi pengiriman PNG 10x15 cm (bila pesanan sudah diimpor)
  * Memakai setelan Export 3D yang sama dengan panelnya (lebar garis, tinggi
@@ -47,6 +48,12 @@ export default function ExportFullButton() {
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Gagal membuat PNG."))), "image/png")
     );
 
+  // JPG: latar poster sudah opak (gradasi/frame) jadi tak ada isu transparansi.
+  const canvasToJpegBlob = (canvas: HTMLCanvasElement): Promise<Blob> =>
+    new Promise((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Gagal membuat JPG."))), "image/jpeg", 0.92)
+    );
+
   // Marker sintetis per gunung koleksi — sama dengan Collection3DPanel.
   const syntheticMarkers = (hike: CollectionHike): RouteMarker[] => {
     const n = hike.gpxData!.points.length;
@@ -76,6 +83,7 @@ export default function ExportFullButton() {
           pxPerMm,
         });
         zip.file(`poster-${base}.png`, await canvasToPngBlob(canvas));
+        zip.file(`poster-${base}.jpg`, await canvasToJpegBlob(canvas));
         const stl = exportRouteStl(posterSize, gpxData.points, markers, export3d, theme.mapRotationDeg);
         zip.file(`rute-${base}.stl`, stl.stl);
         zipName = `poster-${base}-full.zip`;
@@ -83,6 +91,7 @@ export default function ExportFullButton() {
         const base = slug(collection.expeditionTitle, "ekspedisi");
         const canvas = await renderCollectionPoster({ posterSize, collection, pxPerMm, theme });
         zip.file(`poster-koleksi-${base}.png`, await canvasToPngBlob(canvas));
+        zip.file(`poster-koleksi-${base}.jpg`, await canvasToJpegBlob(canvas));
         for (const h of hikesWithGpx) {
           const index = collection.hikes.findIndex((x) => x.id === h.id);
           const blockSize = collectionBlockSize(posterSize, collection.hikes.length, index);
@@ -127,7 +136,7 @@ export default function ExportFullButton() {
       type="button"
       onClick={handleExport}
       disabled={disabled}
-      title="Export Full — ZIP berisi PNG + STL + resi"
+      title="Export Full — ZIP berisi PNG + JPG + STL + resi"
       className="clay-btn flex items-center gap-1.5 bg-gradient-to-r from-[#b8532f] to-[#8f3d20] px-3 py-2 text-xs font-medium text-white transition-all hover:-translate-y-0.5 disabled:translate-y-0 disabled:opacity-60 sm:px-3.5 sm:text-sm"
     >
       {busy ? <Loader2 size={13} className="animate-spin" /> : <FolderDown size={13} />}
