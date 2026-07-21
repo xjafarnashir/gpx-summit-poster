@@ -241,7 +241,7 @@ const safeStorage: StateStorage = {
       /* fall through to final warning below */
     }
 
-    // eslint-disable-next-line no-console
+     
     console.warn("[store] localStorage penuh, perubahan terbaru tidak tersimpan (tetap tampil sampai reload).");
     notifyStorageWarning?.("Penyimpanan browser penuh — perubahan terbaru tidak tersimpan setelah reload.");
   },

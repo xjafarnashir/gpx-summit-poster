@@ -95,7 +95,7 @@ async function drawBackgroundImage(
     ctx.drawImage(img, rect.dx, rect.dy, rect.dw, rect.dh);
     ctx.restore();
   } catch (e) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[background image failed to load]", e);
   }
 }
@@ -853,7 +853,7 @@ async function drawMapBox(
       }
     }
   } catch (e) {
-    // eslint-disable-next-line no-console
+     
     console.warn("[basemap fetch failed, using fallback fill]", e);
     ctx.fillStyle = "#1b1838";
     ctx.fillRect(mx, my, mw, mh);

@@ -222,7 +222,7 @@ export async function fetchStitchedBasemap(
   const results = await runWithConcurrency(jobs, 12);
   const failed = results.filter((r) => r.status === "rejected").length;
   if (failed > 0) {
-    // eslint-disable-next-line no-console
+     
     console.warn(`[tileFetcher] ${failed}/${jobs.length} tile gagal dimuat, area tersebut akan tampak kosong.`);
   }
 

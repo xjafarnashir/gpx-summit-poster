@@ -29,7 +29,7 @@ export default function Export3DPanel() {
       downloadTextFile(res.svg, `rute-${baseName}.svg`, "image/svg+xml");
       const msg = `SVG 1:1 — area peta ${res.mapAreaMm.width.toFixed(1)}×${res.mapAreaMm.height.toFixed(1)} mm · bbox rute ${res.bboxMm.width.toFixed(1)}×${res.bboxMm.height.toFixed(1)} mm`;
       setReadout(msg);
-      // eslint-disable-next-line no-console
+       
       console.log("[SVG 1:1]", msg);
     } catch (e) {
       setReadout(e instanceof Error ? e.message : "Gagal export SVG.");
@@ -47,7 +47,7 @@ export default function Export3DPanel() {
         downloadArrayBuffer(res.stl, `rute-${baseName}.stl`);
         const msg = `STL 1:1 — area peta ${res.mapAreaMm.width.toFixed(1)}×${res.mapAreaMm.height.toFixed(1)} mm · bbox rute ${res.bboxMm.width.toFixed(1)}×${res.bboxMm.height.toFixed(1)} mm`;
         setReadout(msg);
-        // eslint-disable-next-line no-console
+         
         console.log("[STL 1:1]", msg);
       } catch (e) {
         setReadout(e instanceof Error ? e.message : "Gagal export STL.");

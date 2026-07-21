@@ -77,10 +77,13 @@ export default function MapEditor() {
 
     mapRef.current = map;
 
+    // Snapshot the ref inside the effect so cleanup clears the same map's
+    // markers (not whatever the ref points to at teardown time).
+    const markers = markerRefs.current;
     return () => {
       map.remove();
       mapRef.current = null;
-      markerRefs.current.clear();
+      markers.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpxData !== null]);

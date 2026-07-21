@@ -153,11 +153,6 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   const hikes: ReplayHike[] = useMemo(() => (data.kind === "single" ? [data] : data.hikes), [data]);
   const geoms = useMemo(() => hikes.map(buildGeom), [hikes]);
 
-  const reducedMotion = useMemo(
-    () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    []
-  );
-
   const [activeIdx, setActiveIdx] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
