@@ -48,10 +48,11 @@ export default function ExportFullButton() {
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Gagal membuat PNG."))), "image/png")
     );
 
-  // JPG: latar poster sudah opak (gradasi/frame) jadi tak ada isu transparansi.
+  // JPG kualitas maksimum (1.0) → nyaris identik dengan PNG. Latar poster sudah
+  // opak (gradasi/frame) jadi tak ada isu transparansi.
   const canvasToJpegBlob = (canvas: HTMLCanvasElement): Promise<Blob> =>
     new Promise((resolve, reject) =>
-      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Gagal membuat JPG."))), "image/jpeg", 0.92)
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Gagal membuat JPG."))), "image/jpeg", 1.0)
     );
 
   // Marker sintetis per gunung koleksi — sama dengan Collection3DPanel.
