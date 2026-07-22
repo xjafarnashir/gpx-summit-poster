@@ -775,7 +775,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   const title = data.kind === "single" ? data.name : data.title;
   const subtitle =
     data.kind === "single"
-      ? [data.via ? `via ${data.via}` : null, data.date].filter(Boolean).join(" · ")
+      ? [data.climber, data.via ? `via ${data.via}` : null, data.date].filter(Boolean).join(" · ")
       : [data.climber, `${hikes.length} gunung`].filter(Boolean).join(" · ");
 
   const overlayChip =

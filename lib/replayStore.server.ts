@@ -1,6 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { parseReplayData, type ReplayData, type ReplayListItem } from "@/lib/replay";
+import { parseReplayData, replayTitle, type ReplayData, type ReplayListItem } from "@/lib/replay";
 
 /* ============================================================================
  * Penyimpanan data Summit Replay sisi SERVER, per-id. Urutan deteksi:
@@ -119,11 +119,6 @@ export async function writeReplay(id: string, data: ReplayData): Promise<void> {
 }
 
 /* ------------------------ daftar & hapus (admin) ------------------------- */
-
-/** Judul tampilan dari data replay: nama gunung (single) / judul (koleksi). */
-function replayTitle(data: ReplayData): string {
-  return data.kind === "single" ? data.name : data.title;
-}
 
 function toListItem(id: string, raw: unknown, fallbackDate: number | null): ReplayListItem | null {
   const data = parseReplayData(raw);

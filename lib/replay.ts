@@ -34,7 +34,7 @@ export interface ReplayHike {
 }
 
 export type ReplayData =
-  | ({ v: number; kind: "single" } & ReplayHike)
+  | ({ v: number; kind: "single"; climber?: string } & ReplayHike)
   | { v: number; kind: "collection"; title: string; climber?: string; hikes: ReplayHike[] };
 
 /** Ringkasan replay untuk daftar di dashboard admin. */
@@ -48,6 +48,17 @@ export interface ReplayListItem {
 
 export function replayPath(id: string): string {
   return `/landingpage/replay/${id}`;
+}
+
+/**
+ * Judul tampil sebuah replay: gunung/ekspedisi + nama pendaki (bila ada).
+ * Dipakai judul halaman replay & daftar Summit Replay di dashboard admin —
+ * sejajar dengan nama file Export Full yang juga menyertakan nama pendaki.
+ */
+export function replayTitle(data: ReplayData): string {
+  const [primary, climber] =
+    data.kind === "single" ? [data.name, data.climber] : [data.title, data.climber];
+  return [primary, climber].filter((s) => s && s.trim()).join(" · ");
 }
 
 export function isReplayUrl(url: string | undefined): boolean {
@@ -118,6 +129,7 @@ export function buildSingleReplayPayload(stats: SummitStats, gpx: GpxParseResult
   return {
     v: REPLAY_VERSION,
     kind: "single",
+    climber: cleanText(stats.climberName) || undefined,
     ...hikeFrom(stats.mountainName, stats.viaRoute, stats.date, stats.movingTime, stats, gpx.points),
   };
 }
@@ -176,7 +188,7 @@ export function parseReplayData(raw: unknown): ReplayData | null {
   if (o.kind === "single") {
     const hike = parseHike(o);
     if (!hike) return null;
-    return { v: REPLAY_VERSION, kind: "single", ...hike };
+    return { v: REPLAY_VERSION, kind: "single", climber: cleanText(o.climber) || undefined, ...hike };
   }
 
   if (o.kind === "collection") {

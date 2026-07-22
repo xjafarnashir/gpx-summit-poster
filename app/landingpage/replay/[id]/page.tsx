@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cache } from "react";
 import { ChevronLeft, Mountain } from "lucide-react";
 import ReplayPlayer from "@/components/ReplayPlayer";
+import { replayTitle } from "@/lib/replay";
 import { readReplay } from "@/lib/replayStore.server";
 
 /* ============================================================================
@@ -20,7 +21,7 @@ const getReplay = cache(readReplay);
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
   const data = await getReplay(id);
-  const name = data ? (data.kind === "single" ? data.name : data.title) : null;
+  const name = data ? replayTitle(data) : null;
   return {
     title: { absolute: name ? `Summit Replay — ${name} | myKoordinat` : "Summit Replay | myKoordinat" },
     description: "Putar ulang pendakian: pergerakan jalur dari basecamp ke puncak, profil elevasi, dan waktu tempuh.",

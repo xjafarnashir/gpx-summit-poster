@@ -42,6 +42,8 @@ export default function ExportFullButton() {
   const disabled = busy || (posterMode === "single" ? !gpxData : hikesWithGpx.length === 0);
 
   const slug = (s: string, fb: string) => (s.trim() || fb).replace(/\s+/g, "-").toLowerCase();
+  // Gabung gunung + nama pendaki jadi satu basis nama file (yang kosong dilewati).
+  const combo = (parts: string[], fb: string) => slug(parts.filter((p) => p.trim()).join(" "), fb);
 
   const canvasToPngBlob = (canvas: HTMLCanvasElement): Promise<Blob> =>
     new Promise((resolve, reject) =>
@@ -73,7 +75,7 @@ export default function ExportFullButton() {
 
       if (posterMode === "single") {
         if (!gpxData) return;
-        const base = slug(stats.mountainName, "gpx-summit");
+        const base = combo([stats.mountainName, stats.climberName], "gpx-summit");
         const canvas = await renderPoster({
           posterSize,
           gpxData,
@@ -89,7 +91,7 @@ export default function ExportFullButton() {
         zip.file(`rute-${base}.stl`, stl.stl);
         zipName = `poster-${base}-full.zip`;
       } else {
-        const base = slug(collection.expeditionTitle, "ekspedisi");
+        const base = combo([collection.expeditionTitle, collection.climberName], "ekspedisi");
         const canvas = await renderCollectionPoster({ posterSize, collection, pxPerMm, theme });
         zip.file(`poster-koleksi-${base}.png`, await canvasToPngBlob(canvas));
         zip.file(`poster-koleksi-${base}.jpg`, await canvasToJpegBlob(canvas));
