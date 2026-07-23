@@ -461,6 +461,145 @@ input:focus-visible {
   transition: transform 150ms ease;
 }
 
+/* ============================================================================
+ * SUMMIT REPLAY showcase — "layar app" beranimasi: jalur menggambar, pendaki
+ * bergerak dari basecamp ke puncak, bar progres & sparkline elevasi terisi.
+ * Semua CSS murni (tanpa JS) & dimatikan saat prefers-reduced-motion.
+ * SATU sumber path (--replay-d) dipakai jalur SVG dan offset-path pendaki.
+ * ========================================================================== */
+@keyframes t3dTrace {
+  0%,
+  8% {
+    stroke-dashoffset: 100;
+  }
+  70%,
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+.t3d-trace {
+  stroke-dasharray: 100;
+  animation: t3dTrace 5.5s ease-in-out infinite;
+}
+
+/* Pendaki menyusuri jalur (path sama dengan garis emas). */
+@keyframes t3dHike {
+  0%,
+  8% {
+    offset-distance: 0%;
+  }
+  70%,
+  100% {
+    offset-distance: 100%;
+  }
+}
+.t3d-hiker {
+  offset-path: path("M46,318 C86,282 66,246 108,208 C150,172 128,136 168,104 C198,80 214,70 250,58");
+  offset-rotate: 0deg;
+  animation: t3dHike 5.5s ease-in-out infinite;
+}
+
+/* Cincin denyut di titik pendaki. */
+@keyframes t3dPing {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.6);
+  }
+  80%,
+  100% {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+.t3d-ping {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: t3dPing 2s ease-out infinite;
+}
+
+/* Bar progres pemutaran (mengisi kiri→kanan seiring pendaki). */
+@keyframes t3dFill {
+  0%,
+  8% {
+    transform: scaleX(0);
+  }
+  70%,
+  100% {
+    transform: scaleX(1);
+  }
+}
+.t3d-fill {
+  transform-box: fill-box;
+  transform-origin: left center;
+  animation: t3dFill 5.5s ease-in-out infinite;
+}
+
+/* Sapuan kilau melintasi poster hero (kesan cetakan mengkilap/premium). */
+@keyframes t3dShine {
+  0% {
+    transform: translateX(-130%) skewX(-16deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.55;
+  }
+  32%,
+  100% {
+    transform: translateX(240%) skewX(-16deg);
+    opacity: 0;
+  }
+}
+.t3d-shine {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.t3d-shine::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 38%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: t3dShine 7s ease-in-out 1.8s infinite;
+}
+
+/* Garis penghubung antar-langkah "Cara kerja" (menggambar saat masuk view). */
+@keyframes t3dGrow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.t3d-grow {
+  transform-origin: left center;
+}
+@supports (animation-timeline: view()) {
+  .t3d-grow {
+    animation: t3dGrow both linear;
+    animation-timeline: view();
+    animation-range: entry 10% cover 30%;
+  }
+}
+
+/* Dot "LIVE" berkedip. */
+@keyframes t3dBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+.t3d-blink {
+  animation: t3dBlink 1.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .t3d-float,
   .t3d-float-slow,
@@ -469,8 +608,18 @@ input:focus-visible {
   .t3d-reveal,
   .t3d-marquee > div,
   .t3d-orb,
-  .t3d-draw {
+  .t3d-draw,
+  .t3d-trace,
+  .t3d-hiker,
+  .t3d-ping,
+  .t3d-fill,
+  .t3d-blink,
+  .t3d-grow {
     animation: none;
+  }
+  .t3d-shine::after {
+    animation: none;
+    opacity: 0;
   }
   .t3d-card,
   .t3d-poster,
