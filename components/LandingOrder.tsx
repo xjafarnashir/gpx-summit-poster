@@ -5,7 +5,7 @@ import { ArrowUpRight, Check, MessageCircle, Plus, Trash2 } from "lucide-react";
 import { WA_NUMBER, type PackageId, type PosterPackage } from "@/lib/landing";
 import { applyPricing } from "@/lib/pricing";
 import { usePricing } from "@/lib/usePricing";
-import { BACKGROUND_THEMES, bgThemeById, type BackgroundThemeId } from "@/lib/backgroundThemes";
+import { BACKGROUND_THEMES, bgThemeById, inkFor, type BackgroundThemeId, type InkPalette } from "@/lib/backgroundThemes";
 import { ORDER_JSON_LABEL, type OrderPayload, type OrderShipping } from "@/lib/orderPayload";
 
 /* ============================================================================
@@ -299,27 +299,29 @@ function QrBox({ x, y, size }: { x: number; y: number; size: number }) {
 }
 
 /** Nama pendaki + ikon hiker, terpusat di (cx, baseY) — meniru poster. */
-function ClimberLine({ cx, baseY, name, fs, iconSize }: { cx: number; baseY: number; name: string; fs: number; iconSize: number }) {
+function ClimberLine({ cx, baseY, name, fs, iconSize, ink }: { cx: number; baseY: number; name: string; fs: number; iconSize: number; ink: InkPalette }) {
   const textW = name.length * fs * 0.56;
   const groupW = iconSize + 4 + textW;
   const startX = cx - groupW / 2;
   return (
     <g>
-      <HikerGlyph x={startX} y={baseY - iconSize * 0.84} size={iconSize} />
-      <text x={startX + iconSize + 4} y={baseY} fontFamily="sans-serif" fontSize={fs} fontWeight="800" fill="#fbf5ea">{name}</text>
+      <HikerGlyph x={startX} y={baseY - iconSize * 0.84} size={iconSize} color={ink.icon} />
+      <text x={startX + iconSize + 4} y={baseY} fontFamily="sans-serif" fontSize={fs} fontWeight="800" fill={ink.cream}>{name}</text>
     </g>
   );
 }
 
-function SinglePreview({ f, stops }: { f: SingleForm; stops: [number, string][] }) {
+function SinglePreview({ f, stops, ink }: { f: SingleForm; stops: [number, string][]; ink: InkPalette }) {
   const hasQr = f.linkQr.trim().length > 0;
   const meta = [f.nama.trim() || "Nama pendaki", f.tanggal.trim()].filter(Boolean).join("   ·   ");
   const socials = [f.instagram.trim() && `IG ${f.instagram.trim()}`, f.tiktok.trim() && `TT ${f.tiktok.trim()}`].filter(Boolean).join("   ·   ");
+  // Elemen DI ATAS PETA (rute, marker, pill "PETA DARI GPX-MU") tetap warna
+  // gelap-friendly; peta selalu di-tint gelap. Sisanya ikut palet tinta `ink`.
   return (
     <svg viewBox="0 0 660 440" className="h-auto w-full" role="img" aria-label="Preview poster">
       <Defs stops={stops} />
       <rect width="660" height="440" fill={SKY} />
-      <rect x="16" y="16" width="628" height="408" fill="none" stroke="rgba(251,245,234,0.28)" strokeWidth="0.9" />
+      <rect x="16" y="16" width="628" height="408" fill="none" stroke={ink.creamFaint} strokeWidth="0.9" />
 
       {/* kolom kiri: peta (placeholder) + rute contoh + strip elevasi */}
       <rect x="30" y="34" width="268" height="332" rx="6" fill="url(#lo-map)" />
@@ -329,50 +331,50 @@ function SinglePreview({ f, stops }: { f: SingleForm; stops: [number, string][] 
       <circle cx="176" cy="46" r="6.5" fill="#fff" /><circle cx="176" cy="46" r="4" fill="#d6381d" />
       <rect x="40" y="344" width="140" height="16" rx="3" fill="rgba(12,9,22,0.6)" />
       <text x="46" y="355.5" fontFamily="monospace" fontSize="8.5" letterSpacing="0.5" fill="#ffcf8a">PETA DARI GPX-MU</text>
-      <rect x="30" y="372" width="268" height="34" rx="4" fill="rgba(15,10,26,0.5)" stroke="rgba(251,245,234,0.14)" strokeWidth="0.6" />
-      <text x="42" y="386" fontFamily="monospace" fontSize="8" letterSpacing="1.5" fill="#ffcf8a">PROFIL ELEVASI</text>
-      <path d="M40,400 L80,394 L120,396 L160,384 L210,380 L260,388 L288,398" fill="none" stroke="#fbf5ea" strokeWidth="1.4" />
+      <rect x="30" y="372" width="268" height="34" rx="4" fill={ink.panelBg} stroke={ink.panelBorder} strokeWidth="0.6" />
+      <text x="42" y="386" fontFamily="monospace" fontSize="8" letterSpacing="1.5" fill={ink.gold}>PROFIL ELEVASI</text>
+      <path d="M40,400 L80,394 L120,396 L160,384 L210,380 L260,388 L288,398" fill="none" stroke={ink.cream} strokeWidth="1.4" />
 
       {/* kolom kanan */}
       <rect x="322" y="42" width="20" height="13" fill="#e70011" /><rect x="322" y="48.5" width="20" height="6.5" fill="#fff" />
-      <text x="350" y="53" fontFamily="monospace" fontSize="10" letterSpacing="2.5" fill="rgba(251,245,234,0.8)">RUTE PENDAKIAN</text>
-      <text x="322" y="100" fontFamily="sans-serif" fontSize="36" fontWeight="800" fill="#fbf5ea">{fit(up(f.gunung, "GUNUNG"), 36, 310, { weight: "800" })}</text>
-      <rect x="322" y="112" width="86" height="4" fill="#ffcf8a" />
-      <text x="322" y="138" fontFamily="sans-serif" fontSize="13" fontWeight="700" letterSpacing="1.5" fill="rgba(251,245,234,0.82)">{fit(`VIA ${up(f.via, "JALUR")}`, 13, hasQr ? 248 : 310, { weight: "700" })}</text>
+      <text x="350" y="53" fontFamily="monospace" fontSize="10" letterSpacing="2.5" fill={ink.creamSoft}>RUTE PENDAKIAN</text>
+      <text x="322" y="100" fontFamily="sans-serif" fontSize="36" fontWeight="800" fill={ink.cream}>{fit(up(f.gunung, "GUNUNG"), 36, 310, { weight: "800" })}</text>
+      <rect x="322" y="112" width="86" height="4" fill={ink.gold} />
+      <text x="322" y="138" fontFamily="sans-serif" fontSize="13" fontWeight="700" letterSpacing="1.5" fill={ink.creamSoft}>{fit(`VIA ${up(f.via, "JALUR")}`, 13, hasQr ? 248 : 310, { weight: "700" })}</text>
 
       {/* QR kanan-atas (sejajar VIA, seperti poster) */}
       {hasQr && <QrBox x={576} y={120} size={58} />}
 
       {/* meta: nama · tanggal, lalu sosmed */}
-      <text x="322" y="166" fontFamily="sans-serif" fontSize="12" fontWeight="600" fill="rgba(251,245,234,0.85)">{fit(meta, 12, hasQr ? 248 : 310, { weight: "600" })}</text>
-      {socials && <text x="322" y="184" fontFamily="sans-serif" fontSize="11" fill="rgba(251,245,234,0.7)">{fit(socials, 11, 310)}</text>}
+      <text x="322" y="166" fontFamily="sans-serif" fontSize="12" fontWeight="600" fill={ink.creamSoft}>{fit(meta, 12, hasQr ? 248 : 310, { weight: "600" })}</text>
+      {socials && <text x="322" y="184" fontFamily="sans-serif" fontSize="11" fill={ink.creamMuted}>{fit(socials, 11, 310)}</text>}
 
       {/* stat row editorial (dasar kolom kanan) */}
-      <line x1="322" y1="212" x2="632" y2="212" stroke="rgba(251,245,234,0.22)" strokeWidth="0.8" />
-      <rect x="322" y="210.5" width="42" height="3" fill="#ffcf8a" />
-      <g fontFamily="monospace" fontSize="8.5" letterSpacing="1" fill="#ffcf8a">
+      <line x1="322" y1="212" x2="632" y2="212" stroke={ink.divider} strokeWidth="0.8" />
+      <rect x="322" y="210.5" width="42" height="3" fill={ink.gold} />
+      <g fontFamily="monospace" fontSize="8.5" letterSpacing="1" fill={ink.gold}>
         <text x="322" y="230">KETINGGIAN</text>
         <text x="402" y="230">JARAK</text>
         <text x="470" y="230">ELEV GAIN</text>
         <text x="556" y="230">WAKTU</text>
       </g>
-      <g fontFamily="sans-serif" fontSize="19" fontWeight="800" fill="#fbf5ea">
-        <text x="322" y="254">{fit(f.ketinggian.trim() || "0", 19, 58, { weight: "800" })}<tspan fontSize="9" fontWeight="600" fill="rgba(251,245,234,0.7)"> MDPL</tspan></text>
-        <text x="402" y="254">{fit(f.jarak.trim() || "0", 19, 46, { weight: "800" })}<tspan fontSize="9" fontWeight="600" fill="rgba(251,245,234,0.7)"> KM</tspan></text>
-        <text x="470" y="254">{fit(f.elevGain.trim() ? `+${f.elevGain.trim()}` : "+0", 19, 68, { weight: "800" })}<tspan fontSize="9" fontWeight="600" fill="rgba(251,245,234,0.7)"> M</tspan></text>
+      <g fontFamily="sans-serif" fontSize="19" fontWeight="800" fill={ink.cream}>
+        <text x="322" y="254">{fit(f.ketinggian.trim() || "0", 19, 58, { weight: "800" })}<tspan fontSize="9" fontWeight="600" fill={ink.creamMuted}> MDPL</tspan></text>
+        <text x="402" y="254">{fit(f.jarak.trim() || "0", 19, 46, { weight: "800" })}<tspan fontSize="9" fontWeight="600" fill={ink.creamMuted}> KM</tspan></text>
+        <text x="470" y="254">{fit(f.elevGain.trim() ? `+${f.elevGain.trim()}` : "+0", 19, 68, { weight: "800" })}<tspan fontSize="9" fontWeight="600" fill={ink.creamMuted}> M</tspan></text>
         <text x="556" y="254" fontSize="14">{fit(f.waktu.trim() || "—", 14, 74, { weight: "800" })}</text>
       </g>
 
       {/* foto (kolom kanan bawah) */}
-      <rect x="322" y="272" width="150" height="122" rx="6" fill="rgba(255,255,255,0.06)" stroke="rgba(251,245,234,0.25)" strokeWidth="0.8" />
-      <rect x="482" y="272" width="150" height="122" rx="6" fill="rgba(255,255,255,0.06)" stroke="rgba(251,245,234,0.25)" strokeWidth="0.8" />
-      <text x="397" y="337" textAnchor="middle" fontFamily="monospace" fontSize="10" fill="rgba(251,245,234,0.5)">FOTO</text>
-      <text x="557" y="337" textAnchor="middle" fontFamily="monospace" fontSize="10" fill="rgba(251,245,234,0.5)">FOTO</text>
+      <rect x="322" y="272" width="150" height="122" rx="6" fill="rgba(255,255,255,0.06)" stroke={ink.creamFaint} strokeWidth="0.8" />
+      <rect x="482" y="272" width="150" height="122" rx="6" fill="rgba(255,255,255,0.06)" stroke={ink.creamFaint} strokeWidth="0.8" />
+      <text x="397" y="337" textAnchor="middle" fontFamily="monospace" fontSize="10" fill={ink.creamMuted}>FOTO</text>
+      <text x="557" y="337" textAnchor="middle" fontFamily="monospace" fontSize="10" fill={ink.creamMuted}>FOTO</text>
     </svg>
   );
 }
 
-function CollectionPreview({ f, stops }: { f: CollectionForm; stops: [number, string][] }) {
+function CollectionPreview({ f, stops, ink }: { f: CollectionForm; stops: [number, string][]; ink: InkPalette }) {
   const n = f.hikes.length;
   const innerX = 33;
   const innerW = 594;
@@ -425,7 +427,7 @@ function CollectionPreview({ f, stops }: { f: CollectionForm; stops: [number, st
     <svg viewBox="0 0 660 440" className="h-auto w-full" role="img" aria-label="Preview poster koleksi">
       <Defs stops={stops} />
       <rect width="660" height="440" fill={SKY} />
-      <rect x="14" y="14" width="632" height="412" fill="none" stroke="rgba(251,245,234,0.28)" strokeWidth="0.9" />
+      <rect x="14" y="14" width="632" height="412" fill="none" stroke={ink.creamFaint} strokeWidth="0.9" />
 
       {/* blok gunung (kartu): peta kiri, kanan nama/stat + foto (dasar foto = dasar peta) */}
       {f.hikes.map((h, i) => {
@@ -436,43 +438,43 @@ function CollectionPreview({ f, stops }: { f: CollectionForm; stops: [number, st
         const rw = bx + blockW - pad - rx;
         return (
           <g key={i}>
-            <rect x={bx} y={38} width={blockW} height={228} rx={6} fill="rgba(12,9,24,0.32)" stroke="rgba(251,245,234,0.14)" strokeWidth="0.8" />
+            <rect x={bx} y={38} width={blockW} height={228} rx={6} fill={ink.panelBg} stroke={ink.panelBorder} strokeWidth="0.8" />
             <rect x={bx + pad} y={44} width={mapW} height={216} rx={4} fill="url(#lo-map)" />
             <path d={`M${bx + pad + mapW * 0.45},252 C${bx + pad + mapW * 0.7},210 ${bx + pad + mapW * 0.4},170 ${bx + pad + mapW * 0.6},116 C${bx + pad + mapW * 0.78},74 ${bx + pad + mapW * 0.5},62 ${bx + pad + mapW * 0.62},50`} fill="none" stroke="#d6381d" strokeWidth="4.5" strokeLinecap="round" />
-            <text x={rx} y={66} fontFamily="monospace" fontSize="8" letterSpacing="1" fill="rgba(251,245,234,0.6)">PENDAKIAN</text>
-            <text x={rx} y={86} fontFamily="sans-serif" fontSize={minNameFontSize} fontWeight="800" fill="#fbf5ea">{up(h.gunung, `GUNUNG ${i + 1}`)}</text>
-            <text x={rx} y={100} fontFamily="monospace" fontSize="8" fill="#ffcf8a">{fit(`VIA ${up(h.via, "JALUR")}`, 8, rw, { mono: true })}</text>
-            <text x={rx} y={128} fontFamily="sans-serif" fontSize="17" fontWeight="800" fill="#fbf5ea">{fit(h.ketinggian.trim() || "0", 17, rw * 0.62, { weight: "800" })}<tspan fontSize="9" fill="rgba(251,245,234,0.7)"> MDPL</tspan></text>
-            <text x={rx} y={144} fontFamily="monospace" fontSize="8.5" fill="rgba(251,245,234,0.75)">{fit(`${h.jarak.trim() || "0"} KM · +${h.elevGain.trim() || "0"} M`, 8.5, rw, { mono: true })}</text>
-            <rect x={rx} y={156} width={rw} height={104} rx={4} fill="rgba(255,255,255,0.06)" stroke="rgba(251,245,234,0.22)" strokeWidth="0.7" />
-            <text x={rx + rw / 2} y={210} textAnchor="middle" fontFamily="monospace" fontSize="8.5" fill="rgba(251,245,234,0.5)">FOTO</text>
+            <text x={rx} y={66} fontFamily="monospace" fontSize="8" letterSpacing="1" fill={ink.creamMuted}>PENDAKIAN</text>
+            <text x={rx} y={86} fontFamily="sans-serif" fontSize={minNameFontSize} fontWeight="800" fill={ink.cream}>{up(h.gunung, `GUNUNG ${i + 1}`)}</text>
+            <text x={rx} y={100} fontFamily="monospace" fontSize="8" fill={ink.gold}>{fit(`VIA ${up(h.via, "JALUR")}`, 8, rw, { mono: true })}</text>
+            <text x={rx} y={128} fontFamily="sans-serif" fontSize="17" fontWeight="800" fill={ink.cream}>{fit(h.ketinggian.trim() || "0", 17, rw * 0.62, { weight: "800" })}<tspan fontSize="9" fill={ink.creamMuted}> MDPL</tspan></text>
+            <text x={rx} y={144} fontFamily="monospace" fontSize="8.5" fill={ink.creamSoft}>{fit(`${h.jarak.trim() || "0"} KM · +${h.elevGain.trim() || "0"} M`, 8.5, rw, { mono: true })}</text>
+            <rect x={rx} y={156} width={rw} height={104} rx={4} fill="rgba(255,255,255,0.06)" stroke={ink.creamFaint} strokeWidth="0.7" />
+            <text x={rx + rw / 2} y={210} textAnchor="middle" fontFamily="monospace" fontSize="8.5" fill={ink.creamMuted}>FOTO</text>
           </g>
         );
       })}
 
       {/* blok ekspedisi (stack tengah, urutan sama dengan poster) */}
-      <line x1="33" y1="278" x2="627" y2="278" stroke="rgba(251,245,234,0.22)" strokeWidth="0.9" />
+      <line x1="33" y1="278" x2="627" y2="278" stroke={ink.divider} strokeWidth="0.9" />
       {hasQr && <QrBox x={571} y={285} size={52} />}
-      <text x={cx} y="303" textAnchor="middle" fontFamily="sans-serif" fontSize="22" fontWeight="800" fill="#fbf5ea">{fit(up(f.judul, "JUDUL EKSPEDISI"), 22, bandW, { weight: "800" })}</text>
-      <rect x={cx - 45} y="308" width="90" height="3" fill="#ffcf8a" />
-      <text x={cx} y="322" textAnchor="middle" fontFamily="sans-serif" fontSize="9" fontWeight="600" letterSpacing="0.5" fill="rgba(251,245,234,0.82)">{fit(mountains, 9, bandW, { weight: "600" })}</text>
-      <ClimberLine cx={cx} baseY={335} name={fit(f.namaPendaki.trim() || "Nama pendaki", 10, bandW - 20, { weight: "800" })} fs={10} iconSize={13} />
-      {dateBits && <text x={cx} y="347" textAnchor="middle" fontFamily="monospace" fontSize="8" letterSpacing="0.3" fill="rgba(251,245,234,0.6)">{fit(dateBits, 8, bandW, { mono: true })}</text>}
-      {socials && <text x={cx} y="358" textAnchor="middle" fontFamily="sans-serif" fontSize="9" fontWeight="600" fill="rgba(251,245,234,0.8)">{fit(socials, 9, bandW, { weight: "600" })}</text>}
-      {f.deskripsi.trim() && <text x={cx} y="370" textAnchor="middle" fontFamily="sans-serif" fontSize="8" fontStyle="italic" fill="rgba(251,245,234,0.72)">&ldquo;{fit(f.deskripsi.trim(), 8, bandW * 0.92)}&rdquo;</text>}
+      <text x={cx} y="303" textAnchor="middle" fontFamily="sans-serif" fontSize="22" fontWeight="800" fill={ink.cream}>{fit(up(f.judul, "JUDUL EKSPEDISI"), 22, bandW, { weight: "800" })}</text>
+      <rect x={cx - 45} y="308" width="90" height="3" fill={ink.gold} />
+      <text x={cx} y="322" textAnchor="middle" fontFamily="sans-serif" fontSize="9" fontWeight="600" letterSpacing="0.5" fill={ink.creamSoft}>{fit(mountains, 9, bandW, { weight: "600" })}</text>
+      <ClimberLine cx={cx} baseY={335} name={fit(f.namaPendaki.trim() || "Nama pendaki", 10, bandW - 20, { weight: "800" })} fs={10} iconSize={13} ink={ink} />
+      {dateBits && <text x={cx} y="347" textAnchor="middle" fontFamily="monospace" fontSize="8" letterSpacing="0.3" fill={ink.creamMuted}>{fit(dateBits, 8, bandW, { mono: true })}</text>}
+      {socials && <text x={cx} y="358" textAnchor="middle" fontFamily="sans-serif" fontSize="9" fontWeight="600" fill={ink.creamSoft}>{fit(socials, 9, bandW, { weight: "600" })}</text>}
+      {f.deskripsi.trim() && <text x={cx} y="370" textAnchor="middle" fontFamily="sans-serif" fontSize="8" fontStyle="italic" fill={ink.quote}>&ldquo;{fit(f.deskripsi.trim(), 8, bandW * 0.92)}&rdquo;</text>}
 
       {/* baris total: garis + tick emas, 3 kolom terpusat */}
-      <line x1="33" y1="384" x2="627" y2="384" stroke="rgba(251,245,234,0.22)" strokeWidth="0.8" />
-      <rect x="33" y="382.5" width="72" height="3" fill="#ffcf8a" />
-      <g fontFamily="monospace" fontSize="8.5" fill="#ffcf8a">
+      <line x1="33" y1="384" x2="627" y2="384" stroke={ink.divider} strokeWidth="0.8" />
+      <rect x="33" y="382.5" width="72" height="3" fill={ink.gold} />
+      <g fontFamily="monospace" fontSize="8.5" fill={ink.gold}>
         <text x="132" y="399" textAnchor="middle">TOTAL KETINGGIAN</text>
         <text x="330" y="399" textAnchor="middle">TOTAL JARAK</text>
         <text x="528" y="399" textAnchor="middle">TOTAL ELEV GAIN</text>
       </g>
-      <g fontFamily="sans-serif" fontWeight="800" fontSize="17" fill="#fbf5ea">
-        <text x="132" y="417" textAnchor="middle">{Math.round(totalKet).toLocaleString("id-ID")}<tspan fontSize="9" fontWeight="600" fill="rgba(251,245,234,0.7)"> MDPL</tspan></text>
-        <text x="330" y="417" textAnchor="middle">{totalJarak.toFixed(2)}<tspan fontSize="9" fontWeight="600" fill="rgba(251,245,234,0.7)"> KM</tspan></text>
-        <text x="528" y="417" textAnchor="middle">+{Math.round(totalGain)}<tspan fontSize="9" fontWeight="600" fill="rgba(251,245,234,0.7)"> M</tspan></text>
+      <g fontFamily="sans-serif" fontWeight="800" fontSize="17" fill={ink.cream}>
+        <text x="132" y="417" textAnchor="middle">{Math.round(totalKet).toLocaleString("id-ID")}<tspan fontSize="9" fontWeight="600" fill={ink.creamMuted}> MDPL</tspan></text>
+        <text x="330" y="417" textAnchor="middle">{totalJarak.toFixed(2)}<tspan fontSize="9" fontWeight="600" fill={ink.creamMuted}> KM</tspan></text>
+        <text x="528" y="417" textAnchor="middle">+{Math.round(totalGain)}<tspan fontSize="9" fontWeight="600" fill={ink.creamMuted}> M</tspan></text>
       </g>
     </svg>
   );
@@ -625,6 +627,7 @@ export default function LandingOrder() {
   const pkg = pkgId ? (packages.find((p) => p.id === pkgId) ?? null) : null;
   // Preview memakai sunset sebagai tampilan netral sebelum customer memilih.
   const bg = bgThemeById(bgTheme ?? "sunset");
+  const ink = inkFor(bgTheme ?? "sunset");
 
   const patchS = (p: Partial<SingleForm>) => setSingle((f) => ({ ...f, ...p }));
   const patchC = (p: Partial<CollectionForm>) => setCollection((f) => ({ ...f, ...p }));
@@ -708,7 +711,7 @@ export default function LandingOrder() {
         <div className="lg:sticky lg:top-24 lg:self-start">
           <div className="t3d-card overflow-hidden !rounded-xl p-2">
             <div className="overflow-hidden rounded-lg">
-              {mode === "single" ? <SinglePreview f={single} stops={bg.stops} /> : <CollectionPreview f={collection} stops={bg.stops} />}
+              {mode === "single" ? <SinglePreview f={single} stops={bg.stops} ink={ink} /> : <CollectionPreview f={collection} stops={bg.stops} ink={ink} />}
             </div>
           </div>
           <p className="mt-2 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400 dark:text-zinc-500">
@@ -723,7 +726,7 @@ export default function LandingOrder() {
               </span>
               {bgError && <span className="text-xs font-medium text-red-500">Pilih dulu temanya ya</span>}
             </div>
-            <div className={`mt-2 grid grid-cols-4 gap-2 rounded-2xl ${bgError ? "ring-2 ring-red-400/70" : ""}`}>
+            <div className={`mt-2 grid grid-cols-5 gap-2 rounded-2xl ${bgError ? "ring-2 ring-red-400/70" : ""}`}>
               {BACKGROUND_THEMES.map((bt) => (
                 <button
                   key={bt.id}

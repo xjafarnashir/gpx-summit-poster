@@ -12,7 +12,7 @@ import { generateQrDataUrl } from "@/lib/qr";
 import { haversineMeters } from "@/lib/geo";
 import { MARKER_COLORS } from "@/lib/mapIcons";
 import { DEFAULT_PHOTO_TRANSFORM, computeImageRect } from "@/lib/photoTransform";
-import { bgThemeById } from "@/lib/backgroundThemes";
+import { bgThemeById, INK_DARK, inkFor } from "@/lib/backgroundThemes";
 import { hikerIconImage } from "@/lib/hikerIcon";
 import { getIconImage } from "@/lib/canvasIcons";
 import { Calendar, MapPin } from "lucide-react";
@@ -35,12 +35,31 @@ export interface RenderPosterParams {
   pxPerMm: number;
 }
 
-/* ---- Palette (sunset gradient, matching the reference design) ---- */
-const CREAM = "#fbf5ea";
-const CREAM_SOFT = "rgba(251,245,234,0.82)";
-const CREAM_MUTED = "rgba(251,245,234,0.62)";
-const CREAM_FAINT = "rgba(251,245,234,0.32)";
-const GOLD = "#ffcf8a";
+/* ---- Palette (ink). MUTABLE: applyInk() menukar seluruh palet sesuai tema
+ * latar sebelum tiap render, sehingga tema terang ("bone") memakai tinta gelap
+ * tanpa mengubah puluhan situs pemakaian di bawah. Renderer berjalan berurutan
+ * (bukan paralel) dalam satu alur export, jadi state modul ini aman. ---- */
+let CREAM = INK_DARK.cream;
+let CREAM_SOFT = INK_DARK.creamSoft;
+let CREAM_MUTED = INK_DARK.creamMuted;
+let CREAM_FAINT = INK_DARK.creamFaint;
+let GOLD = INK_DARK.gold;
+/** Warna ikon kecil (kalender/hiker) di latar poster. */
+let GOLD_ICON = INK_DARK.icon;
+/** true saat tema latar terang → scrim gelap dilewati. */
+let LIGHT_BG = INK_DARK.lightBg;
+
+/** Terapkan palet tinta untuk tema latar tertentu. Panggil di awal tiap render. */
+function applyInk(themeId?: string) {
+  const p = inkFor(themeId);
+  CREAM = p.cream;
+  CREAM_SOFT = p.creamSoft;
+  CREAM_MUTED = p.creamMuted;
+  CREAM_FAINT = p.creamFaint;
+  GOLD = p.gold;
+  GOLD_ICON = p.icon;
+  LIGHT_BG = p.lightBg;
+}
 
 /** Sets a soft drop shadow for legible text over the map/gradient. */
 function setTextShadow(ctx: CanvasRenderingContext2D, blurPx: number, dy = 0, alpha = 0.55) {
@@ -126,6 +145,7 @@ function formatCoord(lat: number, lon: number): string {
 }
 
 export async function renderPoster(params: RenderPosterParams): Promise<HTMLCanvasElement> {
+  applyInk(params.theme.backgroundTheme);
   if (isLandscapeSize(params.posterSize)) return renderPosterLandscape(params);
 
   const { posterSize, gpxData, markers, stats, theme, registrationMarks, pxPerMm } = params;
@@ -180,13 +200,17 @@ export async function renderPoster(params: RenderPosterParams): Promise<HTMLCanv
   drawElevationProfile(ctx, gpxData, markers, marginMm, elevTop, widthMm - marginMm * 2, elevHeight, heightMm, mm);
 
   // 6b. Legibility scrim: darkens the lower band so cream text always reads,
-  // regardless of how bright the amber gradient gets underneath it.
-  const scrim = ctx.createLinearGradient(0, mm(elevBottom), 0, canvas.height);
-  scrim.addColorStop(0, "rgba(18,12,28,0)");
-  scrim.addColorStop(0.45, "rgba(18,12,28,0.28)");
-  scrim.addColorStop(1, "rgba(12,8,20,0.62)");
-  ctx.fillStyle = scrim;
-  ctx.fillRect(0, mm(elevBottom), canvas.width, canvas.height - mm(elevBottom));
+  // regardless of how bright the amber gradient gets underneath it. Dilewati pada
+  // tema terang — di sana latar sudah terang & tinta gelap, scrim gelap justru
+  // mengotori kertas.
+  if (!LIGHT_BG) {
+    const scrim = ctx.createLinearGradient(0, mm(elevBottom), 0, canvas.height);
+    scrim.addColorStop(0, "rgba(18,12,28,0)");
+    scrim.addColorStop(0.45, "rgba(18,12,28,0.28)");
+    scrim.addColorStop(1, "rgba(12,8,20,0.62)");
+    ctx.fillStyle = scrim;
+    ctx.fillRect(0, mm(elevBottom), canvas.width, canvas.height - mm(elevBottom));
+  }
 
   // Lower area layout: left column (title/subtitle) + right column (photos/QR),
   // with the stats row anchored along the bottom.
@@ -248,7 +272,7 @@ export async function renderPoster(params: RenderPosterParams): Promise<HTMLCanv
     ctx.textBaseline = "alphabetic";
     let mx = marginMm;
     for (const item of metaItems) {
-      const icon = await getIconImage(item.icon, "#ffcf8a", 48);
+      const icon = await getIconImage(item.icon, GOLD_ICON, 48);
       ctx.drawImage(icon, mm(mx), mm(metaBottomMm - iconMm * 0.82), mm(iconMm), mm(iconMm));
       mx += iconMm + heightMm * 0.006;
       ctx.fillStyle = CREAM_SOFT;
@@ -299,6 +323,7 @@ export async function renderPoster(params: RenderPosterParams): Promise<HTMLCanv
  * the portrait renderer so both orientations stay on-brand.
  * ========================================================================== */
 async function renderPosterLandscape(params: RenderPosterParams): Promise<HTMLCanvasElement> {
+  applyInk(params.theme.backgroundTheme);
   const { posterSize, gpxData, markers, stats, theme, registrationMarks, pxPerMm } = params;
   const mm = (v: number) => v * pxPerMm;
   const { widthMm, heightMm, marginMm, mapAreaMm } = posterSize;
@@ -344,7 +369,8 @@ async function renderPosterLandscape(params: RenderPosterParams): Promise<HTMLCa
     ctx.fillStyle = "rgba(12,9,22,0.6)";
     roundRect(ctx, bx, by - mm(attrSize) - padY * 2, tw + padX * 2, mm(attrSize) + padY * 2, mm(1));
     ctx.fill();
-    ctx.fillStyle = CREAM_SOFT;
+    // Pill selalu gelap (di atas peta), jadi teksnya tetap cream walau tema terang.
+    ctx.fillStyle = INK_DARK.creamSoft;
     ctx.textAlign = "left";
     ctx.textBaseline = "bottom";
     ctx.fillText(attr, bx + padX, by - padY);
@@ -359,10 +385,12 @@ async function renderPosterLandscape(params: RenderPosterParams): Promise<HTMLCa
   const elevBottom = heightMm - marginMm;
   const elevH = elevBottom - elevTop;
   if (elevH > 12) {
-    ctx.fillStyle = "rgba(15,10,26,0.55)";
+    // Panel harus kontras dengan tinta grafik: gelap saat tema gelap (grafik
+    // cream), terang saat tema terang (grafik tinta gelap).
+    ctx.fillStyle = LIGHT_BG ? "rgba(255,255,255,0.5)" : "rgba(15,10,26,0.55)";
     roundRect(ctx, mm(mapAreaMm.x), mm(elevTop), mm(mapAreaMm.width), mm(elevH), mm(2.5));
     ctx.fill();
-    ctx.strokeStyle = "rgba(251,245,234,0.16)";
+    ctx.strokeStyle = LIGHT_BG ? "rgba(35,32,27,0.14)" : "rgba(251,245,234,0.16)";
     ctx.lineWidth = mm(0.25);
     roundRect(ctx, mm(mapAreaMm.x), mm(elevTop), mm(mapAreaMm.width), mm(elevH), mm(2.5));
     ctx.stroke();
@@ -474,7 +502,7 @@ async function renderPosterLandscape(params: RenderPosterParams): Promise<HTMLCa
     let mx = rx;
     for (const item of metaItems) {
       const hikerMm = item.icon ? iconMm : iconMm * 1.35;
-      const icon = item.icon ? await getIconImage(item.icon, "#ffcf8a", 48) : await hikerIconImage("#ffcf8a", 72);
+      const icon = item.icon ? await getIconImage(item.icon, GOLD_ICON, 48) : await hikerIconImage(GOLD_ICON, 72);
       ctx.drawImage(icon, mm(mx), mm(cursor - hikerMm * 0.82), mm(hikerMm), mm(hikerMm));
       mx += hikerMm + heightMm * 0.006;
       ctx.fillStyle = CREAM_SOFT;
@@ -600,7 +628,7 @@ function drawIndonesiaFlag(
   ctx.fillRect(mm(xMm), mm(yMm), mm(wMm), mm(hMm / 2));
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(mm(xMm), mm(yMm + hMm / 2), mm(wMm), mm(hMm / 2));
-  ctx.strokeStyle = "rgba(251,245,234,0.5)";
+  ctx.strokeStyle = CREAM_MUTED;
   ctx.lineWidth = mm(0.2);
   ctx.strokeRect(mm(xMm), mm(yMm), mm(wMm), mm(hMm));
   ctx.restore();
@@ -647,7 +675,7 @@ function drawLandscapeStatRow(
   const labelSize = heightMm * 0.0122;
 
   // Top rule across the band, with a short gold accent tick at the left.
-  ctx.strokeStyle = "rgba(251,245,234,0.22)";
+  ctx.strokeStyle = CREAM_FAINT;
   ctx.lineWidth = mm(0.3);
   ctx.beginPath();
   ctx.moveTo(mm(xMm), mm(yMm));
@@ -1484,7 +1512,7 @@ async function drawRoundedImage(
     ctx.restore();
 
     if (withBorder) {
-      ctx.strokeStyle = "rgba(243,236,223,0.6)";
+      ctx.strokeStyle = CREAM_MUTED;
       ctx.lineWidth = mm(0.3);
       roundRect(ctx, fx, fy, fw, fh, mm(1.5));
       ctx.stroke();

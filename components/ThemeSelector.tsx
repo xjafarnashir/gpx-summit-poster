@@ -119,7 +119,7 @@ export default function ThemeSelector() {
       {/* Tema latar poster (preset gradasi). */}
       <div className="text-sm text-zinc-600 dark:text-zinc-300">
         <span className="font-medium">Tema latar poster</span>
-        <div className="mt-2 grid grid-cols-4 gap-2">
+        <div className="mt-2 grid grid-cols-5 gap-2">
           {BACKGROUND_THEMES.map((bt) => (
             <button
               key={bt.id}

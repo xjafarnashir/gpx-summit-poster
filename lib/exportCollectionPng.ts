@@ -3,7 +3,7 @@ import { mapAreaLatLonBounds, mapAreaRotatedBasemap, projectRoute, toPosterMm } 
 import { fetchStitchedBasemap } from "@/lib/tileFetcher";
 import { computeImageRect } from "@/lib/photoTransform";
 import { DEFAULT_PHOTO_TRANSFORM } from "@/lib/photoTransform";
-import { bgThemeById } from "@/lib/backgroundThemes";
+import { bgThemeById, INK_DARK, inkFor } from "@/lib/backgroundThemes";
 import { hikerIconImage } from "@/lib/hikerIcon";
 import { generateQrDataUrl } from "@/lib/qr";
 
@@ -15,11 +15,34 @@ import { generateQrDataUrl } from "@/lib/qr";
  * dengan renderer 1-pendakian.
  * ========================================================================== */
 
-const CREAM = "#fbf5ea";
-const CREAM_SOFT = "rgba(251,245,234,0.82)";
-const CREAM_MUTED = "rgba(251,245,234,0.6)";
-const CREAM_FAINT = "rgba(251,245,234,0.3)";
-const GOLD = "#ffcf8a";
+/* Palet tinta MUTABLE — applyInk() menukarnya sesuai tema latar sebelum render,
+ * agar tema terang ("bone") memakai tinta gelap. Elemen di atas peta (rute,
+ * marker, kotak QR) tetap terang karena peta selalu diberi tint gelap. */
+let CREAM = INK_DARK.cream;
+let CREAM_SOFT = INK_DARK.creamSoft;
+let CREAM_MUTED = INK_DARK.creamMuted;
+let CREAM_FAINT = INK_DARK.creamFaint;
+let GOLD = INK_DARK.gold;
+let GOLD_ICON = INK_DARK.icon;
+let PANEL_BG = INK_DARK.panelBg;
+let PANEL_BORDER = INK_DARK.panelBorder;
+let DIVIDER = INK_DARK.divider;
+let QUOTE = INK_DARK.quote;
+
+function applyInk(themeId?: string) {
+  const p = inkFor(themeId);
+  CREAM = p.cream;
+  CREAM_SOFT = p.creamSoft;
+  CREAM_MUTED = p.creamMuted;
+  CREAM_FAINT = p.creamFaint;
+  GOLD = p.gold;
+  GOLD_ICON = p.icon;
+  PANEL_BG = p.panelBg;
+  PANEL_BORDER = p.panelBorder;
+  DIVIDER = p.divider;
+  QUOTE = p.quote;
+}
+
 const SANS = '"Arial Narrow", "Arial", sans-serif';
 const MONO = '"Courier New", ui-monospace, monospace';
 
@@ -201,6 +224,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidthPx: numbe
 
 export async function renderCollectionPoster(params: RenderCollectionParams): Promise<HTMLCanvasElement> {
   const { posterSize, collection, pxPerMm, theme } = params;
+  applyInk(collection.backgroundTheme);
   const { widthMm: W, heightMm: H, marginMm: m } = posterSize;
   const mm = (v: number) => v * pxPerMm;
 
@@ -275,10 +299,10 @@ async function drawHikeBlock(
   const rightW = rightRect.width;
 
   // --- Panel kartu: satu latar per gunung supaya blok terbaca sebagai unit ---
-  ctx.fillStyle = "rgba(12,9,24,0.32)";
+  ctx.fillStyle = PANEL_BG;
   roundRect(ctx, mm(bx), mm(by), mm(bw), mm(bh), mm(3));
   ctx.fill();
-  ctx.strokeStyle = "rgba(251,245,234,0.14)";
+  ctx.strokeStyle = PANEL_BORDER;
   ctx.lineWidth = mm(0.25);
   roundRect(ctx, mm(bx), mm(by), mm(bw), mm(bh), mm(3));
   ctx.stroke();
@@ -533,7 +557,7 @@ async function drawPhotoBox(
       ctx.clip();
       ctx.drawImage(img, x + rect.dx, y + rect.dy, rect.dw, rect.dh);
       ctx.restore();
-      ctx.strokeStyle = "rgba(243,236,223,0.35)";
+      ctx.strokeStyle = CREAM_FAINT;
       ctx.lineWidth = mm(0.25);
       roundRect(ctx, x, y, w, h, r);
       ctx.stroke();
@@ -572,7 +596,7 @@ async function drawExpedition(
   const cx = W / 2;
 
   // divider
-  ctx.strokeStyle = "rgba(251,245,234,0.22)";
+  ctx.strokeStyle = DIVIDER;
   ctx.lineWidth = mm(0.3);
   ctx.beginPath();
   ctx.moveTo(mm(m), mm(topMm));
@@ -631,7 +655,7 @@ async function drawExpedition(
     const groupW = mm(iconMm) + mm(1.6) + textW;
     const nameBase = titleY + H * 0.066;
     try {
-      const icon = await hikerIconImage("#ffcf8a", 72);
+      const icon = await hikerIconImage(GOLD_ICON, 72);
       ctx.drawImage(icon, mm(cx) - groupW / 2, mm(nameBase - iconMm * 0.82), mm(iconMm), mm(iconMm));
     } catch {
       /* ikon gagal → nama tetap digambar */
@@ -669,7 +693,7 @@ async function drawExpedition(
   // quote / deskripsi — italic di tengah, elegan seperti tagline
   if (collection.expeditionDesc) {
     ctx.font = `italic ${mm(H * 0.016)}px ${SANS}`;
-    ctx.fillStyle = "rgba(251,245,234,0.72)";
+    ctx.fillStyle = QUOTE;
     const quoted = `"${collection.expeditionDesc.trim()}"`;
     const lines = wrapText(ctx, quoted, mm(innerW * 0.68), 2);
     lines.forEach((ln, i) => ctx.fillText(ln, mm(cx), mm(titleY + H * 0.134 + i * H * 0.021)));
@@ -688,7 +712,7 @@ async function drawExpedition(
   ];
 
   const ruleY = bottomMm - H * 0.062;
-  ctx.strokeStyle = "rgba(251,245,234,0.22)";
+  ctx.strokeStyle = DIVIDER;
   ctx.lineWidth = mm(0.3);
   ctx.beginPath();
   ctx.moveTo(mm(m), mm(ruleY));
