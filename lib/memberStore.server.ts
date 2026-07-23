@@ -5,9 +5,9 @@ import { hashMemberPassword } from "@/lib/memberAuth";
 /* ============================================================================
  * Penyimpanan MEMBER (operator editor) sisi SERVER — satu daftar JSON.
  *
- * Pola sama dengan pricingStore: Netlify Blobs (store "settings", key
- * "members") di production, fallback file .data/members.json saat `next dev`.
- * Password TIDAK disimpan plaintext — hanya hash (lihat hashMemberPassword).
+ * Pola sama dengan pricingStore: Netlify Blobs → Vercel Blob (BLOB_READ_WRITE_TOKEN)
+ * → file .data/members.json (dev). Password TIDAK disimpan plaintext — hanya hash
+ * (lihat hashMemberPassword).
  * ========================================================================== */
 
 export interface MemberRecord {
@@ -29,6 +29,39 @@ const DEV_FILE = path.join(process.cwd(), ".data", "members.json");
 async function blobStore() {
   const { getStore } = await import("@netlify/blobs");
   return getStore(BLOB_STORE); // melempar di luar Netlify — ditangkap pemanggil
+}
+
+/* ------------------------------ Vercel Blob ------------------------------ */
+
+const vercelKey = () => `settings/${BLOB_KEY}.json`;
+
+async function readVercelBlob(): Promise<MemberRecord[] | null> {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) return null;
+  try {
+    const { list } = await import("@vercel/blob");
+    const response = await list({ prefix: vercelKey(), token });
+    const blob = response.blobs[0];
+    if (!blob) return null;
+    const res = await fetch(blob.url);
+    if (!res.ok) return null;
+    return parseMembers((await res.json()) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+async function writeVercelBlob(list: MemberRecord[]): Promise<void> {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) throw new Error("BLOB_READ_WRITE_TOKEN tidak tersedia.");
+  const { put } = await import("@vercel/blob");
+  await put(vercelKey(), JSON.stringify(list), {
+    access: "public",
+    contentType: "application/json",
+    token,
+    addRandomSuffix: false,
+    allowOverwrite: true,
+  });
 }
 
 function parseMembers(raw: unknown): MemberRecord[] {
@@ -57,9 +90,14 @@ export async function readMembers(): Promise<MemberRecord[]> {
     const raw = (await store.get(BLOB_KEY, { type: "json" })) as unknown;
     if (raw != null) return parseMembers(raw);
   } catch {
-    /* bukan di Netlify — coba file lokal */
+    /* bukan di Netlify — coba Vercel */
   }
-  // 2. File lokal (development).
+  // 2. Vercel Blob (bila token tersedia).
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const parsed = await readVercelBlob();
+    if (parsed != null) return parsed;
+  }
+  // 3. File lokal (development).
   try {
     return parseMembers(JSON.parse(await fs.readFile(DEV_FILE, "utf8")));
   } catch {
@@ -74,9 +112,14 @@ async function writeMembers(list: MemberRecord[]): Promise<void> {
     await store.setJSON(BLOB_KEY, list);
     return;
   } catch {
-    /* bukan di Netlify — tulis file lokal */
+    /* bukan di Netlify — coba Vercel */
   }
-  // 2. File lokal (development).
+  // 2. Vercel Blob (bila token tersedia).
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    await writeVercelBlob(list);
+    return;
+  }
+  // 3. File lokal (development).
   await fs.mkdir(path.dirname(DEV_FILE), { recursive: true });
   await fs.writeFile(DEV_FILE, JSON.stringify(list), "utf8");
 }
