@@ -54,7 +54,7 @@ const DEM_SOURCE = "replay-dem";
 /** DEM Terrarium AWS (gratis, CORS *) untuk relief 3D. */
 const TERRARIUM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
 const TERRAIN_EXAGGERATION = 1.7; // Kembali ke 1.7 agar relief pegunungan tampak nyata ala Strava
-const FOLLOW_PITCH = 54; // miring khas flyby, mencegah kamera melihat void ubin di cakrawala
+const FOLLOW_PITCH = 50; // sedikit lebih tegak → frustum lebih rapat → lebih sedikit ubin jauh yang harus dimuat tiap frame
 const FOLLOW_ZOOM = 14.1;
 const OVERVIEW_PITCH_3D = 52;
 /** Kamera memandang titik ~sekian meter DI DEPAN pendaki → view dari belakang;
@@ -164,6 +164,10 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
   // "tengahkan" muncul untuk kembali mengikuti pendaki.
   const [showRecenter, setShowRecenter] = useState(false);
   const [tilesLoaded, setTilesLoaded] = useState(false);
+  // "warming": setelah Play ditekan (3D, mulai dari awal), kamera lompat ke pose
+  // chase awal & MENUNGGU ubinnya termuat sebelum pendaki bergerak — mencegah
+  // "titik sudah jalan tapi citra 3D belum muncul".
+  const [warming, setWarming] = useState(false);
   const mapReadyRef = useRef(false);
   const satTileLoadedRef = useRef(false);
 
@@ -253,6 +257,12 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
       zoom: 12,
       maxPitch: 80,
       attributionControl: { compact: true },
+      // Ubin muncul "snap" tanpa cross-fade (terasa lebih gesit, mengurangi
+      // kesan "masih loading" saat kamera terbang).
+      fadeDuration: 0,
+      // Cache lebih besar: ubin sepanjang jalur tak cepat dibuang, jadi replay
+      // & bolak-balik kamera tidak fetch ulang terus-menerus.
+      maxTileCacheSize: 512,
     });
     // Interaksi peta (cubit-zoom, geser, putar) aktif — default MapLibre,
     // ditegaskan agar jelas. Zoom via roda mouse & pinch dua jari.
@@ -369,7 +379,9 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
             tiles: [TERRARIUM_URL],
             encoding: "terrarium",
             tileSize: 256,
-            maxzoom: 15,
+            // maxzoom 13 (bukan 15): ubin DEM di-overzoom → jauh lebih sedikit
+            // tile & decode CPU per frame. Dari jarak flyby, relief tetap oke.
+            maxzoom: 13,
             attribution: "Terrain: Mapzen/Terrarium · AWS",
           });
         } catch {
@@ -646,7 +658,7 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     const safetyTimer = setTimeout(() => {
       onIdle();
       map.off("idle", onIdle);
-    }, 4000);
+    }, 7000);
 
     return () => {
       clearTimeout(safetyTimer);
@@ -739,12 +751,43 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
     setPlaying(autoplay);
   };
 
+  /** Mulai memutar. Di 3D dari awal: hangatkan dulu pose chase awal (tunggu
+   *  ubinnya termuat) supaya gerak pendaki tak mendahului citra/relief. */
+  const beginPlay = () => {
+    const map = mapRef.current;
+    const freshStart = fRef.current < 0.02;
+    if (map && mode3dRef.current && freshStart && !userPannedRef.current) {
+      followActiveRef.current = false;
+      hikeChangedRef.current = true;
+      updateFollowCamera(0); // lompat ke pose chase awal
+      setWarming(true);
+      let done = false;
+      const go = () => {
+        if (done || !mapRef.current) return;
+        done = true;
+        map.off("idle", go);
+        setWarming(false);
+        setPlaying(true);
+      };
+      map.once("idle", go);
+      // Jaring pengaman: koneksi lambat tak boleh menahan Play selamanya.
+      setTimeout(go, 3500);
+      return;
+    }
+    setPlaying(true);
+  };
+
   const handlePlayPause = () => {
-    if (fRef.current >= 1 && !playing) {
+    if (warming) return;
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (fRef.current >= 1) {
       fRef.current = 0;
       setFinishedAll(false);
     }
-    setPlaying((p) => !p);
+    beginPlay();
   };
 
   const handleRestart = () => switchHike(data.kind === "collection" ? 0 : activeIdx, true);
@@ -859,11 +902,11 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
           </div>
         )}
 
-        {mapReady && !tilesLoaded && !playing && (
+        {mapReady && (warming || !tilesLoaded) && !playing && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
             <span className="flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-xs font-medium text-white backdrop-blur-sm animate-pulse">
               <Loader2 className="h-3 w-3 animate-spin" />
-              <span>Memuat citra & relief 3D…</span>
+              <span>{warming ? "Menyiapkan tampilan 3D…" : "Memuat citra & relief 3D…"}</span>
             </span>
           </div>
         )}
@@ -888,18 +931,18 @@ export default function ReplayPlayer({ data }: { data: ReplayData }) {
         <div className="mt-1.5 flex items-center gap-2">
           <button
             type="button"
-            disabled={!playing && !tilesLoaded}
+            disabled={warming || (!playing && !tilesLoaded)}
             onClick={handlePlayPause}
-            title={playing ? "Pause" : finishedAll ? "Putar lagi" : "Putar"}
+            title={playing ? "Pause" : warming ? "Menyiapkan…" : finishedAll ? "Putar lagi" : "Putar"}
             className={`clay-btn flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all ${
-              !playing && !tilesLoaded
+              warming || (!playing && !tilesLoaded)
                 ? "bg-zinc-400 dark:bg-zinc-700 opacity-50 cursor-not-allowed"
                 : "bg-gradient-to-r from-[#d97757] to-[#b8532f]"
             }`}
           >
             {playing ? (
               <Pause size={14} />
-            ) : !tilesLoaded ? (
+            ) : warming || !tilesLoaded ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <Play size={14} className="ml-0.5" />
